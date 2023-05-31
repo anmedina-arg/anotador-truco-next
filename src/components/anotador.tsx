@@ -3,6 +3,22 @@
 import { useEffect, useState } from "react";
 import Image from 'next/image';
 
+const fosforo1 = require('../../public/fosforos-main/fosforos-1.png');
+const fosforo2 = require('../../public/fosforos-main/fosforos-2.png');
+const fosforo3 = require('../../public/fosforos-main/fosforos-3.png');
+const fosforo4 = require('../../public/fosforos-main/fosforos-4.png');
+const fosforo5 = require('../../public/fosforos-main/fosforos-5.png');
+const fosforo6 = require('../../public/fosforos-main/fosforos-6.png');
+const fosforo7 = require('../../public/fosforos-main/fosforos-7.png');
+const fosforo8 = require('../../public/fosforos-main/fosforos-8.png');
+const fosforo9 = require('../../public/fosforos-main/fosforos-9.png');
+const fosforo10 = require('../../public/fosforos-main/fosforos-10.png');
+const fosforo11 = require('../../public/fosforos-main/fosforos-11.png');
+const fosforo12 = require('../../public/fosforos-main/fosforos-12.png');
+const fosforo13 = require('../../public/fosforos-main/fosforos-13.png');
+const fosforo14 = require('../../public/fosforos-main/fosforos-14.png');
+const fosforo15 = require('../../public/fosforos-main/fosforos-15.png');
+
 export const Anotador = (): any => {
 
   const [state, setState] = useState(0);
@@ -11,9 +27,9 @@ export const Anotador = (): any => {
 
   const fosforos = () => {
     if (good === 'buenas') {
-      return `/fosforos-main/fosforos-${state - 15}.png`;
+      return `fosoro${state - 15}`;
     } else {
-      return `/fosforos-main/fosforos-${state}.png`;
+      return `fosforo${state}`;
     };
   };
 
