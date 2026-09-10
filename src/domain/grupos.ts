@@ -107,6 +107,10 @@ export async function obtenerGrupoPorId(grupoId: string) {
   return grupo ?? null;
 }
 
+// Sin orden particular a propósito: esta lista también alimenta el picker
+// de "Nueva Partida" y el panel de administración de miembros — ninguno de
+// los dos debería reordenarse cada vez que alguien gana una Partida. Para
+// el Ranking (ticket #7) usar ordenarPorRanking sobre el resultado.
 export async function listarMiembrosDeGrupo(grupoId: string) {
   const db = getDb();
 
@@ -123,6 +127,24 @@ export async function listarMiembrosDeGrupo(grupoId: string) {
     .from(gruposParticipantesTable)
     .innerJoin(usersTable, eq(usersTable.id, gruposParticipantesTable.participanteId))
     .where(eq(gruposParticipantesTable.grupoId, grupoId));
+}
+
+// Ranking (ver CONTEXT.md): orden de Participantes por puntos, desempatado
+// por participanteId para que el orden sea determinístico entre llamadas —
+// sin un desempate explícito, Postgres no garantiza nada entre filas
+// empatadas en puntos.
+export function ordenarPorRanking<T extends { puntos: number; participanteId: string }>(
+  miembros: T[],
+): T[] {
+  return [...miembros].sort(
+    (a, b) => b.puntos - a.puntos || a.participanteId.localeCompare(b.participanteId),
+  );
+}
+
+// Ratio puntos/Partidas jugadas (ver CONTEXT.md) — null cuando todavía no
+// jugó ninguna Partida, para no confundir "no jugó" con "ratio 0".
+export function calcularRatio(puntos: number, partidasJugadas: number): number | null {
+  return partidasJugadas === 0 ? null : puntos / partidasJugadas;
 }
 
 export async function unirseAGrupo(input: {

@@ -1,6 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { obtenerGrupoPorId, listarMiembrosDeGrupo } from "@/domain/grupos";
+import {
+  obtenerGrupoPorId,
+  listarMiembrosDeGrupo,
+  ordenarPorRanking,
+  calcularRatio,
+} from "@/domain/grupos";
 import { listarPartidasEnCursoDeGrupo } from "@/domain/partidas";
 import { nombresDeEquipo } from "@/domain/participantes";
 import { regenerarCodigoInvitacionAction, sacarMiembroAction } from "./actions";
@@ -32,6 +37,11 @@ export default async function GrupoDetallePage({
   }
 
   const esAdmin = grupo.adminParticipanteId === session.user.id;
+  const ranking = ordenarPorRanking(miembros);
+  const formatearRatio = (puntos: number, partidasJugadas: number) => {
+    const ratio = calcularRatio(puntos, partidasJugadas);
+    return ratio === null ? "—" : ratio.toFixed(2);
+  };
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 p-6">
@@ -90,6 +100,38 @@ export default async function GrupoDetallePage({
             })}
           </ul>
         )}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <h2 className="font-semibold">Ranking</h2>
+        <div className="overflow-x-auto rounded border">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-xs text-gray-500">
+                <th className="p-2 text-left font-normal">Participante</th>
+                <th className="p-2 text-right font-normal">Pts</th>
+                <th className="p-2 text-right font-normal">PJ</th>
+                <th className="p-2 text-right font-normal">PG</th>
+                <th className="p-2 text-right font-normal">PP</th>
+                <th className="p-2 text-right font-normal">Ratio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranking.map((miembro) => (
+                <tr key={miembro.participanteId} className="border-b last:border-0">
+                  <td className="p-2">{miembro.nombre || miembro.email}</td>
+                  <td className="p-2 text-right">{miembro.puntos}</td>
+                  <td className="p-2 text-right">{miembro.partidasJugadas}</td>
+                  <td className="p-2 text-right">{miembro.partidasGanadas}</td>
+                  <td className="p-2 text-right">{miembro.partidasPerdidas}</td>
+                  <td className="p-2 text-right">
+                    {formatearRatio(miembro.puntos, miembro.partidasJugadas)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="flex flex-col gap-2">
