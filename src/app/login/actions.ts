@@ -2,6 +2,7 @@
 
 import { CredentialsSignin } from "next-auth";
 import { signIn } from "@/auth";
+import { callbackUrlSeguro } from "@/lib/callback-url";
 
 export type EstadoLogin = { message: string } | undefined;
 
@@ -11,9 +12,10 @@ export async function loguearConCredenciales(
 ): Promise<EstadoLogin> {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const callbackUrl = callbackUrlSeguro(formData.get("callbackUrl"));
 
   try {
-    await signIn("credentials", { email, password, redirectTo: "/" });
+    await signIn("credentials", { email, password, redirectTo: callbackUrl });
   } catch (error) {
     // Ojo: no capturar el AuthError genérico acá — CallbackRouteError envuelve
     // cualquier excepción de authorize() (ej. la base caída), no solo
@@ -25,6 +27,7 @@ export async function loguearConCredenciales(
   }
 }
 
-export async function loguearConGoogle() {
-  await signIn("google", { redirectTo: "/" });
+export async function loguearConGoogleAction(formData: FormData) {
+  const callbackUrl = callbackUrlSeguro(formData.get("callbackUrl"));
+  await signIn("google", { redirectTo: callbackUrl });
 }

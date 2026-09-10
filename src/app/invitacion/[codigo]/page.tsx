@@ -10,7 +10,9 @@ export default async function InvitacionPage({
   const { codigo } = await params;
   const session = await auth();
   if (!session?.user) {
-    redirect("/login");
+    // Sin esto, el login siempre vuelve a "/" y el join a este Grupo nunca
+    // llega a correr — la persona termina logueada pero sin sumarse a nada.
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/invitacion/${codigo}`)}`);
   }
 
   let grupoId: string;
