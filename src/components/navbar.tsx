@@ -10,18 +10,23 @@ export async function Navbar() {
       </a>
 
       {session?.user ? (
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/" });
-          }}
-          className="flex items-center gap-3"
-        >
-          <span className="text-sm">{session.user.name ?? session.user.email}</span>
-          <button type="submit" className="rounded border px-3 py-1">
-            Salir
-          </button>
-        </form>
+        <div className="flex items-center gap-4">
+          <a href="/grupos" className="underline">
+            Mis Grupos
+          </a>
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/" });
+            }}
+            className="flex items-center gap-3"
+          >
+            <span className="text-sm">{session.user.name ?? session.user.email}</span>
+            <button type="submit" className="rounded border px-3 py-1">
+              Salir
+            </button>
+          </form>
+        </div>
       ) : (
         <div className="flex gap-3">
           <a href="/login" className="underline">

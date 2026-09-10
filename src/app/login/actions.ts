@@ -3,7 +3,12 @@
 import { CredentialsSignin } from "next-auth";
 import { signIn } from "@/auth";
 
-export async function loguearConCredenciales(formData: FormData) {
+export type EstadoLogin = { message: string } | undefined;
+
+export async function loguearConCredenciales(
+  _estadoPrevio: EstadoLogin,
+  formData: FormData,
+): Promise<EstadoLogin> {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
 
@@ -14,7 +19,7 @@ export async function loguearConCredenciales(formData: FormData) {
     // cualquier excepción de authorize() (ej. la base caída), no solo
     // credenciales inválidas. Solo CredentialsSignin es específicamente eso.
     if (error instanceof CredentialsSignin) {
-      throw new Error("Email o contraseña incorrectos.");
+      return { message: "Email o contraseña incorrectos." };
     }
     throw error;
   }
