@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from 'next/image';
 
 const fosforo1 = require('../../public/fosforos-main/fosforos-1.png');
@@ -19,18 +19,21 @@ const fosforo13 = require('../../public/fosforos-main/fosforos-13.png');
 const fosforo14 = require('../../public/fosforos-main/fosforos-14.png');
 const fosforo15 = require('../../public/fosforos-main/fosforos-15.png');
 
+const fosforosPorIndice = [
+  fosforo1, fosforo2, fosforo3, fosforo4, fosforo5,
+  fosforo6, fosforo7, fosforo8, fosforo9, fosforo10,
+  fosforo11, fosforo12, fosforo13, fosforo14, fosforo15,
+];
+
 export const Anotador = (): any => {
 
   const [state, setState] = useState(0);
 
-  const [good, setGood] = useState('malas')
+  const good = state > 15 ? 'buenas' : 'malas';
 
   const fosforos = () => {
-    if (good === 'buenas') {
-      return `fosoro${state - 15}`;
-    } else {
-      return `fosforo${state}`;
-    };
+    const indice = good === 'buenas' ? state - 15 : state;
+    return fosforosPorIndice[indice - 1];
   };
 
   const add = () => {
@@ -46,15 +49,6 @@ export const Anotador = (): any => {
     }
     return
   };
-
-  useEffect(() => {
-    if (state > 15) {
-      setGood('buenas')
-    } else {
-      setGood('malas')
-    };
-  }, [state])
-
 
   return (
     <div>
