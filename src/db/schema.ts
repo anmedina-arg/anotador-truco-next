@@ -1,4 +1,5 @@
-import { pgTable, primaryKey, integer, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, primaryKey, integer, text, timestamp, pgEnum, check } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Participante (ver CONTEXT.md) = la tabla "user" que espera el adapter de
 // Auth.js, con una columna extra para la contraseña del login por
@@ -105,4 +106,64 @@ export const gruposParticipantesTable = pgTable(
     partidasPerdidas: integer("partidasPerdidas").notNull().default(0),
   },
   (gp) => [primaryKey({ columns: [gp.grupoId, gp.participanteId] })],
+);
+
+// Partida (ver CONTEXT.md): enfrentamiento entre 2 Equipos de 3 Participantes
+// dentro de un Grupo. equipo1Puntos/equipo2Puntos/equipoGanador/fechaFin no
+// los usa este ticket (#5, solo crea la Partida) — los actualiza el #6 al
+// anotar y cerrarla; se crean ya para no migrar la tabla de nuevo.
+export const estadoPartidaEnum = pgEnum("estado_partida", [
+  "en_curso",
+  "finalizada",
+  "cancelada",
+]);
+
+export const partidasTable = pgTable(
+  "partida",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    grupoId: text("grupoId")
+      .notNull()
+      .references(() => gruposTable.id, { onDelete: "cascade" }),
+    // "restrict": igual criterio que grupo.adminParticipanteId — no perder el
+    // registro de la Partida solo porque el Anotador se borró de la app.
+    anotadorParticipanteId: text("anotadorParticipanteId")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    estado: estadoPartidaEnum("estado").notNull().default("en_curso"),
+    equipo1Puntos: integer("equipo1Puntos").notNull().default(0),
+    equipo2Puntos: integer("equipo2Puntos").notNull().default(0),
+    equipoGanador: integer("equipoGanador"),
+    fechaInicio: timestamp("fechaInicio", { mode: "date" }).notNull().defaultNow(),
+    fechaFin: timestamp("fechaFin", { mode: "date" }),
+  },
+  (partida) => [
+    check("equipo1_puntos_rango", sql`${partida.equipo1Puntos} BETWEEN 0 AND 30`),
+    check("equipo2_puntos_rango", sql`${partida.equipo2Puntos} BETWEEN 0 AND 30`),
+    check("equipo_ganador_valido", sql`${partida.equipoGanador} IN (1, 2)`),
+  ],
+);
+
+export const partidasParticipantesTable = pgTable(
+  "partida_participante",
+  {
+    partidaId: text("partidaId")
+      .notNull()
+      .references(() => partidasTable.id, { onDelete: "cascade" }),
+    // "restrict": una fila de partida_participante es historial de quién
+    // jugó — no debería poder desaparecer en cascada solo porque el usuario
+    // se borró, a diferencia de grupo_participante (que sí es "cascade",
+    // porque ahí sacar a un Participante del Grupo es exactamente sacar esa
+    // fila).
+    participanteId: text("participanteId")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    equipoNumero: integer("equipoNumero").notNull(),
+  },
+  (pp) => [
+    primaryKey({ columns: [pp.partidaId, pp.participanteId] }),
+    check("equipo_numero_valido", sql`${pp.equipoNumero} IN (1, 2)`),
+  ],
 );

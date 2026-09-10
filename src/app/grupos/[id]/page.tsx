@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { obtenerGrupoPorId, listarMiembrosDeGrupo } from "@/domain/grupos";
+import { listarPartidasEnCursoDeGrupo } from "@/domain/partidas";
 import { regenerarCodigoInvitacionAction, sacarMiembroAction } from "./actions";
 import { LinkInvitacion } from "./link-invitacion";
 
@@ -15,9 +16,10 @@ export default async function GrupoDetallePage({
     redirect("/login");
   }
 
-  const [grupo, miembros] = await Promise.all([
+  const [grupo, miembros, partidasEnCurso] = await Promise.all([
     obtenerGrupoPorId(id),
     listarMiembrosDeGrupo(id),
+    listarPartidasEnCursoDeGrupo(id),
   ]);
   if (!grupo) {
     notFound();
@@ -51,6 +53,30 @@ export default async function GrupoDetallePage({
           </form>
         </section>
       )}
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Partidas en curso</h2>
+          <a href={`/grupos/${grupo.id}/partidas/nueva`} className="text-sm underline">
+            Nueva Partida
+          </a>
+        </div>
+        {partidasEnCurso.length === 0 ? (
+          <p className="text-sm text-gray-500">No hay Partidas en curso.</p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {partidasEnCurso.map((partida) => (
+              <li key={partida.id} className="rounded border p-3 text-sm">
+                <p>
+                  {partida.equipo1.map((m) => m.nombre || m.email).join(", ")}
+                  {" vs. "}
+                  {partida.equipo2.map((m) => m.nombre || m.email).join(", ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="flex flex-col gap-2">
         <h2 className="font-semibold">Miembros</h2>

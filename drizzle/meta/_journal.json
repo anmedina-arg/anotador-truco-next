@@ -22,6 +22,13 @@
       "when": 1789009702160,
       "tag": "0002_living_surge",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789012380790,
+      "tag": "0003_premium_sir_ram",
+      "breakpoints": true
     }
   ]
 }

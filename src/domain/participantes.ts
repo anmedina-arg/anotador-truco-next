@@ -3,6 +3,15 @@ import bcrypt from "bcryptjs";
 import { getDb } from "../db/client";
 import { usersTable } from "../db/schema";
 
+// Forma mínima de un Participante para mostrar en una lista (nombre de
+// Grupo, Equipo de una Partida, etc.) — un solo lugar para no repetir esta
+// forma en cada módulo que solo necesita id+nombre+email.
+export type ParticipanteBasico = {
+  participanteId: string;
+  nombre: string | null;
+  email: string | null;
+};
+
 function normalizarEmail(email: string) {
   return email.trim().toLowerCase();
 }
