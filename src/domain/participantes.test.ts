@@ -24,6 +24,16 @@ describe("registrarParticipante", () => {
     expect(participante.passwordHash).not.toBe("unaClaveSegura123");
   });
 
+  it("rechaza un nombre vacío", async () => {
+    await expect(
+      registrarParticipante({
+        nombre: "   ",
+        email: emailDeTest,
+        password: "unaClaveSegura123",
+      }),
+    ).rejects.toThrow("El Participante necesita un nombre");
+  });
+
   it("rechaza el registro si el email ya está en uso", async () => {
     await registrarParticipante({
       nombre: "Ana",

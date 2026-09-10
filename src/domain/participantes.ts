@@ -19,6 +19,11 @@ export async function registrarParticipante(input: {
     throw new Error("La contraseña debe tener al menos 8 caracteres");
   }
 
+  const nombre = input.nombre.trim();
+  if (!nombre) {
+    throw new Error("El Participante necesita un nombre");
+  }
+
   const db = getDb();
   const email = normalizarEmail(input.email);
 
@@ -36,7 +41,7 @@ export async function registrarParticipante(input: {
   try {
     const [participante] = await db
       .insert(usersTable)
-      .values({ name: input.nombre, email, passwordHash })
+      .values({ name: nombre, email, passwordHash })
       .returning();
 
     return participante;

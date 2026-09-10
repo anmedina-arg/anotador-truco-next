@@ -25,7 +25,9 @@ export default async function GruposPage() {
         <ul className="flex flex-col gap-2">
           {grupos.map((grupo) => (
             <li key={grupo.id} className="rounded border p-3">
-              {grupo.nombre}
+              <a href={`/grupos/${grupo.id}`} className="underline">
+                {grupo.nombre}
+              </a>
               {grupo.adminParticipanteId === session.user.id && (
                 <span className="ml-2 text-xs text-gray-500">(admin)</span>
               )}
