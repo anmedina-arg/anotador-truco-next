@@ -10,7 +10,12 @@ import {
 } from "../db/schema";
 import { registrarParticipante } from "./participantes";
 import { crearGrupo } from "./grupos";
-import { crearPartida, listarPartidasEnCursoDeGrupo } from "./partidas";
+import {
+  crearPartida,
+  listarPartidasEnCursoDeGrupo,
+  anotarPunto,
+  cancelarPartida,
+} from "./partidas";
 
 // p0..p6 quedan como miembros del Grupo; p7 registrado pero sin sumarse,
 // para el caso de "no es miembro".
@@ -245,5 +250,238 @@ describe("listarPartidasEnCursoDeGrupo", () => {
 
     const partidas = await listarPartidasEnCursoDeGrupo(grupoId);
     expect(partidas.map((p) => p.id)).not.toContain(partida.id);
+  });
+});
+
+describe("anotarPunto", () => {
+  async function crearPartidaDePrueba() {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    return crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+  }
+
+  it("suma un punto al Equipo indicado", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    const actualizada = await anotarPunto({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      equipo: 1,
+      delta: 1,
+    });
+
+    expect(actualizada.equipo1Puntos).toBe(1);
+    expect(actualizada.equipo2Puntos).toBe(0);
+    expect(actualizada.estado).toBe("en_curso");
+  });
+
+  it("resta un punto al Equipo indicado", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 2, delta: 1 });
+
+    const actualizada = await anotarPunto({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      equipo: 2,
+      delta: -1,
+    });
+
+    expect(actualizada.equipo2Puntos).toBe(0);
+  });
+
+  it("el contador nunca queda por debajo de 0", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    const actualizada = await anotarPunto({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      equipo: 1,
+      delta: -1,
+    });
+
+    expect(actualizada.equipo1Puntos).toBe(0);
+    expect(actualizada.estado).toBe("en_curso");
+  });
+
+  it("rechaza si quien anota no es el Anotador de la Partida", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    await expect(
+      anotarPunto({ partidaId: partida.id, solicitanteId: p1, equipo: 1, delta: 1 }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede cargar puntos");
+  });
+
+  it("rechaza si la Partida no está en_curso", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    await expect(
+      anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 }),
+    ).rejects.toThrow("La Partida no está en curso");
+  });
+
+  // Llegar a 30 anotando de a uno tomaría 30 round-trips a la base de test
+  // (supera el timeout de vitest por test) — se siembra el marcador en 29
+  // directo por DB, igual que el resto de la suite ya hace para arrancar en
+  // un estado puntual (ver "no devuelve Partidas canceladas" más arriba), y
+  // se prueba solo la transición 29 → 30 que es lo que importa acá.
+  async function sembrarEquipo1En29(partidaId: string) {
+    const db = getDb();
+    await db.update(partidasTable).set({ equipo1Puntos: 29 }).where(eq(partidasTable.id, partidaId));
+  }
+
+  it("al llegar a 30 cierra la Partida como finalizada y registra el Equipo ganador", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarEquipo1En29(partida.id);
+
+    const actual = await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    expect(actual.equipo1Puntos).toBe(30);
+    expect(actual.estado).toBe("finalizada");
+    expect(actual.equipoGanador).toBe(1);
+    expect(actual.fechaFin).toBeTruthy();
+  });
+
+  it("al llegar a 30 no deja seguir anotando en esa Partida", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarEquipo1En29(partida.id);
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    await expect(
+      anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 2, delta: 1 }),
+    ).rejects.toThrow("La Partida no está en curso");
+  });
+
+  it("al llegar a 30 actualiza las estadísticas de los 6 Participantes en la misma operación", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarEquipo1En29(partida.id);
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    const db = getDb();
+    const stats = await db
+      .select()
+      .from(gruposParticipantesTable)
+      .where(eq(gruposParticipantesTable.grupoId, grupoId));
+
+    const porId = new Map(stats.map((s) => [s.participanteId, s]));
+
+    for (const ganadorId of [p0, p1, p2]) {
+      const s = porId.get(ganadorId)!;
+      expect(s.puntos).toBe(1);
+      expect(s.partidasJugadas).toBe(1);
+      expect(s.partidasGanadas).toBe(1);
+      expect(s.partidasPerdidas).toBe(0);
+    }
+
+    for (const perdedorId of [p3, p4, p5]) {
+      const s = porId.get(perdedorId)!;
+      expect(s.puntos).toBe(0);
+      expect(s.partidasJugadas).toBe(1);
+      expect(s.partidasGanadas).toBe(0);
+      expect(s.partidasPerdidas).toBe(1);
+    }
+  });
+});
+
+describe("cancelarPartida", () => {
+  it("cancela una Partida en_curso", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+
+    const cancelada = await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    expect(cancelada.estado).toBe("cancelada");
+    expect(cancelada.fechaFin).toBeTruthy();
+  });
+
+  it("libera a sus Participantes para una Partida nueva", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    const nueva = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+
+    expect(nueva.estado).toBe("en_curso");
+  });
+
+  it("no afecta ninguna estadística", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    const db = getDb();
+    const stats = await db
+      .select()
+      .from(gruposParticipantesTable)
+      .where(eq(gruposParticipantesTable.grupoId, grupoId));
+
+    for (const s of stats) {
+      expect(s.partidasJugadas).toBe(0);
+      expect(s.partidasGanadas).toBe(0);
+      expect(s.partidasPerdidas).toBe(0);
+      expect(s.puntos).toBe(0);
+    }
+  });
+
+  it("rechaza si quien cancela no es el Anotador de la Partida", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+
+    await expect(
+      cancelarPartida({ partidaId: partida.id, solicitanteId: p1 }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede cancelarla");
+  });
+
+  it("rechaza si la Partida no está en_curso", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    await expect(
+      cancelarPartida({ partidaId: partida.id, solicitanteId: p0 }),
+    ).rejects.toThrow("La Partida no está en curso");
   });
 });

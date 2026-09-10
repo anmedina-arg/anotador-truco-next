@@ -8,6 +8,8 @@ import {
   partidasParticipantesTable,
 } from "../db/schema";
 
+const PUNTOS_PARA_GANAR = 30;
+
 export async function crearPartida(input: {
   grupoId: string;
   anotadorParticipanteId: string;
@@ -152,4 +154,183 @@ export async function listarPartidasEnCursoDeGrupo(grupoId: string) {
   }
 
   return Array.from(porPartida.values());
+}
+
+export async function obtenerPartidaConEquipos(partidaId: string) {
+  const db = getDb();
+
+  const [partida] = await db.select().from(partidasTable).where(eq(partidasTable.id, partidaId));
+  if (!partida) {
+    return null;
+  }
+
+  const filas = await db
+    .select({
+      participanteId: usersTable.id,
+      nombre: usersTable.name,
+      email: usersTable.email,
+      equipoNumero: partidasParticipantesTable.equipoNumero,
+    })
+    .from(partidasParticipantesTable)
+    .innerJoin(usersTable, eq(usersTable.id, partidasParticipantesTable.participanteId))
+    .where(eq(partidasParticipantesTable.partidaId, partidaId));
+
+  const equipo1: ParticipanteBasico[] = [];
+  const equipo2: ParticipanteBasico[] = [];
+  for (const fila of filas) {
+    const miembro = { participanteId: fila.participanteId, nombre: fila.nombre, email: fila.email };
+    (fila.equipoNumero === 1 ? equipo1 : equipo2).push(miembro);
+  }
+
+  return { ...partida, equipo1, equipo2 };
+}
+
+// Anota (o resta) un punto en vivo al Equipo indicado. Solo el Anotador de
+// la Partida puede hacerlo, y solo mientras está en_curso. El contador nunca
+// sale de [0, 30] — restar en 0 es un no-op, y llegar a 30 cierra sola la
+// Partida (estado, Equipo ganador y estadísticas de los 6 Participantes se
+// actualizan en la misma transacción, según lo decidido en el ticket #1).
+export async function anotarPunto(input: {
+  partidaId: string;
+  solicitanteId: string;
+  equipo: 1 | 2;
+  delta: 1 | -1;
+}) {
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    // FOR UPDATE: dos toques de "+" casi simultáneos del mismo Anotador (o un
+    // doble submit) tienen que serializarse acá, no pisarse los cambios.
+    const [partida] = await tx
+      .select()
+      .from(partidasTable)
+      .where(eq(partidasTable.id, input.partidaId))
+      .for("update");
+
+    if (!partida) {
+      throw new Error("La Partida no existe");
+    }
+    if (partida.estado !== "en_curso") {
+      throw new Error("La Partida no está en curso");
+    }
+    if (partida.anotadorParticipanteId !== input.solicitanteId) {
+      throw new Error("Solo el Anotador de la Partida puede cargar puntos");
+    }
+
+    const actual = input.equipo === 1 ? partida.equipo1Puntos : partida.equipo2Puntos;
+    const nuevoValor = Math.min(PUNTOS_PARA_GANAR, Math.max(0, actual + input.delta));
+
+    if (nuevoValor === actual) {
+      return partida;
+    }
+
+    const columnaPuntos =
+      input.equipo === 1 ? { equipo1Puntos: nuevoValor } : { equipo2Puntos: nuevoValor };
+
+    if (nuevoValor < PUNTOS_PARA_GANAR) {
+      const [actualizada] = await tx
+        .update(partidasTable)
+        .set(columnaPuntos)
+        .where(eq(partidasTable.id, input.partidaId))
+        .returning();
+      return actualizada;
+    }
+
+    const [finalizada] = await tx
+      .update(partidasTable)
+      .set({
+        ...columnaPuntos,
+        estado: "finalizada",
+        equipoGanador: input.equipo,
+        fechaFin: new Date(),
+      })
+      .where(eq(partidasTable.id, input.partidaId))
+      .returning();
+
+    const jugadores = await tx
+      .select({
+        participanteId: partidasParticipantesTable.participanteId,
+        equipoNumero: partidasParticipantesTable.equipoNumero,
+      })
+      .from(partidasParticipantesTable)
+      .where(eq(partidasParticipantesTable.partidaId, input.partidaId));
+
+    const ganadores = jugadores
+      .filter((j) => j.equipoNumero === input.equipo)
+      .map((j) => j.participanteId);
+    const perdedores = jugadores
+      .filter((j) => j.equipoNumero !== input.equipo)
+      .map((j) => j.participanteId);
+
+    // Ganadores y perdedores son conjuntos disjuntos (particionados del mismo
+    // `jugadores`) — no hay fila que ambos updates puedan pisarse, así que
+    // corren en paralelo, igual que crearPartida hace con su propio trabajo
+    // independiente dentro de la transacción.
+    await Promise.all([
+      ganadores.length > 0
+        ? tx
+            .update(gruposParticipantesTable)
+            .set({
+              puntos: sql`${gruposParticipantesTable.puntos} + 1`,
+              partidasJugadas: sql`${gruposParticipantesTable.partidasJugadas} + 1`,
+              partidasGanadas: sql`${gruposParticipantesTable.partidasGanadas} + 1`,
+            })
+            .where(
+              and(
+                eq(gruposParticipantesTable.grupoId, partida.grupoId),
+                inArray(gruposParticipantesTable.participanteId, ganadores),
+              ),
+            )
+        : Promise.resolve(),
+      perdedores.length > 0
+        ? tx
+            .update(gruposParticipantesTable)
+            .set({
+              partidasJugadas: sql`${gruposParticipantesTable.partidasJugadas} + 1`,
+              partidasPerdidas: sql`${gruposParticipantesTable.partidasPerdidas} + 1`,
+            })
+            .where(
+              and(
+                eq(gruposParticipantesTable.grupoId, partida.grupoId),
+                inArray(gruposParticipantesTable.participanteId, perdedores),
+              ),
+            )
+        : Promise.resolve(),
+    ]);
+
+    return finalizada;
+  });
+}
+
+// El Anotador corta la Partida antes de tiempo: libera a sus 6 Participantes
+// (quedan con estado distinto de en_curso, así que una Partida nueva los
+// puede volver a elegir) sin que cuente como jugada para nadie.
+export async function cancelarPartida(input: { partidaId: string; solicitanteId: string }) {
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    const [partida] = await tx
+      .select()
+      .from(partidasTable)
+      .where(eq(partidasTable.id, input.partidaId))
+      .for("update");
+
+    if (!partida) {
+      throw new Error("La Partida no existe");
+    }
+    if (partida.estado !== "en_curso") {
+      throw new Error("La Partida no está en curso");
+    }
+    if (partida.anotadorParticipanteId !== input.solicitanteId) {
+      throw new Error("Solo el Anotador de la Partida puede cancelarla");
+    }
+
+    const [cancelada] = await tx
+      .update(partidasTable)
+      .set({ estado: "cancelada", fechaFin: new Date() })
+      .where(eq(partidasTable.id, input.partidaId))
+      .returning();
+
+    return cancelada;
+  });
 }

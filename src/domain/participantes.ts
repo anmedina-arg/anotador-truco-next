@@ -12,6 +12,14 @@ export type ParticipanteBasico = {
   email: string | null;
 };
 
+export function nombreDeParticipante(participante: ParticipanteBasico) {
+  return participante.nombre || participante.email || "";
+}
+
+export function nombresDeEquipo(equipo: ParticipanteBasico[]) {
+  return equipo.map(nombreDeParticipante).join(", ");
+}
+
 function normalizarEmail(email: string) {
   return email.trim().toLowerCase();
 }

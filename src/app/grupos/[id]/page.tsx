@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { obtenerGrupoPorId, listarMiembrosDeGrupo } from "@/domain/grupos";
 import { listarPartidasEnCursoDeGrupo } from "@/domain/partidas";
+import { nombresDeEquipo } from "@/domain/participantes";
 import { regenerarCodigoInvitacionAction, sacarMiembroAction } from "./actions";
 import { LinkInvitacion } from "./link-invitacion";
 
@@ -65,15 +66,28 @@ export default async function GrupoDetallePage({
           <p className="text-sm text-gray-500">No hay Partidas en curso.</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {partidasEnCurso.map((partida) => (
-              <li key={partida.id} className="rounded border p-3 text-sm">
+            {partidasEnCurso.map((partida) => {
+              const detalle = (
                 <p>
-                  {partida.equipo1.map((m) => m.nombre || m.email).join(", ")}
+                  {nombresDeEquipo(partida.equipo1)}
                   {" vs. "}
-                  {partida.equipo2.map((m) => m.nombre || m.email).join(", ")}
+                  {nombresDeEquipo(partida.equipo2)}
                 </p>
-              </li>
-            ))}
+              );
+              const esAnotador = partida.anotadorParticipanteId === session.user.id;
+
+              return (
+                <li key={partida.id} className="rounded border p-3 text-sm">
+                  {esAnotador ? (
+                    <a href={`/grupos/${grupo.id}/partidas/${partida.id}`} className="underline">
+                      {detalle}
+                    </a>
+                  ) : (
+                    detalle
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
