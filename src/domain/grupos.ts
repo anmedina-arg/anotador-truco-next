@@ -124,10 +124,9 @@ export async function obtenerGrupoMasAntiguoDeParticipante(participanteId: strin
   return grupo ?? null;
 }
 
-// Sin orden particular a propósito: esta lista también alimenta el picker
-// de "Nueva Partida" y el panel de administración de miembros — ninguno de
-// los dos debería reordenarse cada vez que alguien gana una Partida. Para
-// el Ranking (ticket #7) usar ordenarPorRanking sobre el resultado.
+// Sin orden particular propio: quien la llama decide cómo ordenar el
+// resultado — ordenarPorRanking (Ranking) u ordenarPorFrecuencia (picker de
+// "Nueva Partida" y lista de Miembros, ver ticket #11).
 export async function listarMiembrosDeGrupo(grupoId: string) {
   const db = getDb();
 
@@ -146,15 +145,28 @@ export async function listarMiembrosDeGrupo(grupoId: string) {
     .where(eq(gruposParticipantesTable.grupoId, grupoId));
 }
 
-// Ranking (ver CONTEXT.md): orden de Participantes por puntos, desempatado
-// por participanteId para que el orden sea determinístico entre llamadas —
-// sin un desempate explícito, Postgres no garantiza nada entre filas
-// empatadas en puntos.
+// Desempate determinístico compartido por los distintos órdenes de
+// Participantes de abajo — sin él, Postgres no garantiza nada entre filas
+// empatadas en el campo que se esté ordenando.
+function compararPorParticipanteId(a: { participanteId: string }, b: { participanteId: string }) {
+  return a.participanteId.localeCompare(b.participanteId);
+}
+
+// Ranking (ver CONTEXT.md): orden de Participantes por puntos.
 export function ordenarPorRanking<T extends { puntos: number; participanteId: string }>(
   miembros: T[],
 ): T[] {
+  return [...miembros].sort((a, b) => b.puntos - a.puntos || compararPorParticipanteId(a, b));
+}
+
+// Orden por frecuencia de juego (ticket #11): quienes juegan más seguido
+// primero, para no tener que buscarlos entre gente que rara vez juega al
+// armar Equipos.
+export function ordenarPorFrecuencia<T extends { partidasJugadas: number; participanteId: string }>(
+  miembros: T[],
+): T[] {
   return [...miembros].sort(
-    (a, b) => b.puntos - a.puntos || a.participanteId.localeCompare(b.participanteId),
+    (a, b) => b.partidasJugadas - a.partidasJugadas || compararPorParticipanteId(a, b),
   );
 }
 

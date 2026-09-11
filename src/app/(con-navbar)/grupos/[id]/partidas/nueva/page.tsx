@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { obtenerGrupoPorId, listarMiembrosDeGrupo } from "@/domain/grupos";
+import { obtenerGrupoPorId, listarMiembrosDeGrupo, ordenarPorFrecuencia } from "@/domain/grupos";
 import { FormularioNuevaPartida } from "./formulario";
 
 export default async function NuevaPartidaPage({
@@ -34,7 +34,7 @@ export default async function NuevaPartidaPage({
       </a>
       <h1 className="text-2xl font-bold">Nueva Partida</h1>
 
-      <FormularioNuevaPartida grupoId={grupo.id} miembros={miembros} />
+      <FormularioNuevaPartida grupoId={grupo.id} miembros={ordenarPorFrecuencia(miembros)} />
     </main>
   );
 }

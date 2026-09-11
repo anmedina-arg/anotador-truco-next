@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ordenarPorRanking, calcularRatio } from "./grupos";
+import { ordenarPorRanking, ordenarPorFrecuencia, calcularRatio } from "./grupos";
 
 describe("ordenarPorRanking", () => {
   it("ordena de mayor a menor puntos", () => {
@@ -29,6 +29,39 @@ describe("ordenarPorRanking", () => {
     const original = [...miembros];
 
     ordenarPorRanking(miembros);
+
+    expect(miembros).toEqual(original);
+  });
+});
+
+describe("ordenarPorFrecuencia", () => {
+  it("ordena de mayor a menor partidasJugadas", () => {
+    const miembros = [
+      { participanteId: "a", partidasJugadas: 1 },
+      { participanteId: "b", partidasJugadas: 5 },
+      { participanteId: "c", partidasJugadas: 3 },
+    ];
+
+    expect(ordenarPorFrecuencia(miembros).map((m) => m.participanteId)).toEqual(["b", "c", "a"]);
+  });
+
+  it("desempata por participanteId para que el orden sea determinístico", () => {
+    const miembros = [
+      { participanteId: "z", partidasJugadas: 2 },
+      { participanteId: "a", partidasJugadas: 2 },
+    ];
+
+    expect(ordenarPorFrecuencia(miembros).map((m) => m.participanteId)).toEqual(["a", "z"]);
+  });
+
+  it("no muta el array recibido", () => {
+    const miembros = [
+      { participanteId: "a", partidasJugadas: 1 },
+      { participanteId: "b", partidasJugadas: 5 },
+    ];
+    const original = [...miembros];
+
+    ordenarPorFrecuencia(miembros);
 
     expect(miembros).toEqual(original);
   });
