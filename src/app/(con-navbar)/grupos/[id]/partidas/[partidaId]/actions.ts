@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
-import { anotarPunto, cancelarPartida } from "@/domain/partidas";
+import { anotarPunto, cancelarPartida, crearRevancha } from "@/domain/partidas";
 
 function equipoValido(valor: FormDataEntryValue | null): 1 | 2 {
   const n = Number(valor);
@@ -41,6 +41,32 @@ export async function anotarPuntoAction(formData: FormData) {
 
   revalidatePath(`/grupos/${grupoId}/partidas/${partidaId}`);
   revalidatePath(`/grupos/${grupoId}`);
+}
+
+export type EstadoRevancha = { message: string } | undefined;
+
+export async function crearRevanchaAction(
+  _estadoPrevio: EstadoRevancha,
+  formData: FormData,
+): Promise<EstadoRevancha> {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  const grupoId = String(formData.get("grupoId") ?? "");
+  const partidaId = String(formData.get("partidaId") ?? "");
+
+  let revancha: Awaited<ReturnType<typeof crearRevancha>>;
+  try {
+    revancha = await crearRevancha({ partidaId, solicitanteId: session.user.id });
+  } catch (error) {
+    if (error instanceof Error) {
+      return { message: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/grupos/${grupoId}`);
+  redirect(`/grupos/${grupoId}/partidas/${revancha.id}`);
 }
 
 export async function cancelarPartidaAction(formData: FormData) {

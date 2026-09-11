@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { obtenerPartidaConEquipos, esAnotadorDePartida } from "@/domain/partidas";
 import { nombresDeEquipo } from "@/domain/participantes";
 import { anotarPuntoAction, cancelarPartidaAction } from "./actions";
+import { BotonRevancha } from "./boton-revancha";
 
 const CORTE_MALAS_BUENAS = 15;
 
@@ -36,11 +37,14 @@ export default async function PartidaDetallePage({
       </a>
 
       {partida.estado === "finalizada" && (
-        <p className="rounded border border-green-600 bg-green-50 p-3 text-sm text-green-800">
-          Partida finalizada — ganó el Equipo {partida.equipoGanador} (
-          {partida.equipoGanador === 1 ? nombresDeEquipo(partida.equipo1) : nombresDeEquipo(partida.equipo2)}
-          ).
-        </p>
+        <>
+          <p className="rounded border border-green-600 bg-green-50 p-3 text-sm text-green-800">
+            Partida finalizada — ganó el Equipo {partida.equipoGanador} (
+            {partida.equipoGanador === 1 ? nombresDeEquipo(partida.equipo1) : nombresDeEquipo(partida.equipo2)}
+            ).
+          </p>
+          <BotonRevancha grupoId={grupoId} partidaId={partida.id} />
+        </>
       )}
       {partida.estado === "cancelada" && (
         <p className="rounded border border-gray-400 bg-gray-50 p-3 text-sm text-gray-600">

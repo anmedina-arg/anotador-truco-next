@@ -115,6 +115,31 @@ export async function crearPartida(input: {
   });
 }
 
+// Repite la última Partida con un tap (ticket #12): mismos 6 Participantes,
+// misma división de Equipos y mismo Anotador que la Partida finalizada de
+// referencia, arrancando 0-0. Sin validaciones propias más allá de leer la
+// Partida original — delega en crearPartida para no duplicar sus reglas
+// (3+3, sin repetidos, exclusividad).
+export async function crearRevancha(input: { partidaId: string; solicitanteId: string }) {
+  const partida = await obtenerPartidaConEquipos(input.partidaId);
+  if (!partida) {
+    throw new Error("La Partida no existe");
+  }
+  if (partida.estado !== "finalizada") {
+    throw new Error("Solo se puede pedir Revancha de una Partida finalizada");
+  }
+  if (!esAnotadorDePartida(partida, input.solicitanteId)) {
+    throw new Error("Solo el Anotador de la Partida puede pedir Revancha");
+  }
+
+  return crearPartida({
+    grupoId: partida.grupoId,
+    anotadorParticipanteId: partida.anotadorParticipanteId,
+    equipo1: partida.equipo1.map((p) => p.participanteId),
+    equipo2: partida.equipo2.map((p) => p.participanteId),
+  });
+}
+
 export async function listarPartidasEnCursoDeGrupo(grupoId: string) {
   const db = getDb();
 

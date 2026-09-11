@@ -12,6 +12,7 @@ import { registrarParticipante } from "./participantes";
 import { crearGrupo } from "./grupos";
 import {
   crearPartida,
+  crearRevancha,
   listarPartidasEnCursoDeGrupo,
   anotarPunto,
   cancelarPartida,
@@ -215,6 +216,120 @@ describe("crearPartida", () => {
     });
 
     expect(partida1.estado).toBe("en_curso");
+  });
+});
+
+// Semilla una Partida ya finalizada directo por DB (equivalente a llegar a
+// 30 vía anotarPunto, sin el round-trip) — reutilizada por crearRevancha y,
+// más adelante, por crearSiguienteEquipo (ticket #13).
+async function crearPartidaFinalizada(equipoGanador: 1 | 2 = 1) {
+  const [p0, p1, p2, p3, p4, p5] = participanteIds;
+  const partida = await crearPartida({
+    grupoId,
+    anotadorParticipanteId: p0,
+    equipo1: [p0, p1, p2],
+    equipo2: [p3, p4, p5],
+  });
+
+  const db = getDb();
+  const puntos = equipoGanador === 1 ? { equipo1Puntos: 30 } : { equipo2Puntos: 30 };
+  const [finalizada] = await db
+    .update(partidasTable)
+    .set({ ...puntos, estado: "finalizada", equipoGanador, fechaFin: new Date() })
+    .where(eq(partidasTable.id, partida.id))
+    .returning();
+
+  return finalizada;
+}
+
+describe("crearRevancha", () => {
+  it("arma una Partida nueva con los mismos 6 Participantes, misma división y mismo Anotador", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const original = await crearPartidaFinalizada();
+
+    const revancha = await crearRevancha({ partidaId: original.id, solicitanteId: p0 });
+
+    expect(revancha.id).not.toBe(original.id);
+    expect(revancha.estado).toBe("en_curso");
+    expect(revancha.anotadorParticipanteId).toBe(p0);
+    expect(revancha.equipo1Puntos).toBe(0);
+    expect(revancha.equipo2Puntos).toBe(0);
+
+    const db = getDb();
+    const filas = await db
+      .select()
+      .from(partidasParticipantesTable)
+      .where(eq(partidasParticipantesTable.partidaId, revancha.id));
+
+    expect(filas.filter((f) => f.equipoNumero === 1).map((f) => f.participanteId).sort()).toEqual(
+      [p0, p1, p2].sort(),
+    );
+    expect(filas.filter((f) => f.equipoNumero === 2).map((f) => f.participanteId).sort()).toEqual(
+      [p3, p4, p5].sort(),
+    );
+  });
+
+  it("rechaza si la Partida no existe", async () => {
+    const [p0] = participanteIds;
+    await expect(
+      crearRevancha({ partidaId: "00000000-0000-0000-0000-000000000000", solicitanteId: p0 }),
+    ).rejects.toThrow("La Partida no existe");
+  });
+
+  it("rechaza si la Partida está en_curso", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+
+    await expect(
+      crearRevancha({ partidaId: partida.id, solicitanteId: p0 }),
+    ).rejects.toThrow("Solo se puede pedir Revancha de una Partida finalizada");
+  });
+
+  it("rechaza si la Partida está cancelada", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    await expect(
+      crearRevancha({ partidaId: partida.id, solicitanteId: p0 }),
+    ).rejects.toThrow("Solo se puede pedir Revancha de una Partida finalizada");
+  });
+
+  it("rechaza si quien la pide no era el Anotador de la Partida original", async () => {
+    const [, p1] = participanteIds;
+    const original = await crearPartidaFinalizada();
+
+    await expect(
+      crearRevancha({ partidaId: original.id, solicitanteId: p1 }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede pedir Revancha");
+  });
+
+  it("rechaza si alguno de los 6 ya está jugando otra Partida en_curso", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const original = await crearPartidaFinalizada();
+
+    // p0 (el Anotador de la original) ya quedó anotado en otra Partida
+    // en_curso aparte, con gente distinta.
+    await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+
+    await expect(
+      crearRevancha({ partidaId: original.id, solicitanteId: p0 }),
+    ).rejects.toThrow("Alguno de los Participantes elegidos ya está jugando otra Partida");
   });
 });
 
