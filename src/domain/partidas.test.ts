@@ -13,6 +13,7 @@ import { crearGrupo } from "./grupos";
 import {
   crearPartida,
   crearRevancha,
+  crearSiguienteEquipo,
   listarPartidasEnCursoDeGrupo,
   anotarPunto,
   cancelarPartida,
@@ -329,6 +330,176 @@ describe("crearRevancha", () => {
 
     await expect(
       crearRevancha({ partidaId: original.id, solicitanteId: p0 }),
+    ).rejects.toThrow("Alguno de los Participantes elegidos ya está jugando otra Partida");
+  });
+});
+
+describe("crearSiguienteEquipo", () => {
+  it("deja fijo al Equipo ganador y arma el desafiante con los Participantes indicados", async () => {
+    const [p0, p1, p2, p3, p4, , p6] = participanteIds;
+    const original = await crearPartidaFinalizada(1); // gana equipo1 = [p0, p1, p2]
+
+    const siguiente = await crearSiguienteEquipo({
+      partidaId: original.id,
+      solicitanteId: p0,
+      equipoDesafiante: [p3, p4, p6],
+    });
+
+    expect(siguiente.estado).toBe("en_curso");
+    expect(siguiente.equipo1Puntos).toBe(0);
+    expect(siguiente.equipo2Puntos).toBe(0);
+
+    const db = getDb();
+    const filas = await db
+      .select()
+      .from(partidasParticipantesTable)
+      .where(eq(partidasParticipantesTable.partidaId, siguiente.id));
+
+    expect(filas.filter((f) => f.equipoNumero === 1).map((f) => f.participanteId).sort()).toEqual(
+      [p0, p1, p2].sort(),
+    );
+    expect(filas.filter((f) => f.equipoNumero === 2).map((f) => f.participanteId).sort()).toEqual(
+      [p3, p4, p6].sort(),
+    );
+  });
+
+  it("si el Anotador anterior ganó, sigue siendo Anotador sin necesidad de nuevoAnotadorParticipanteId", async () => {
+    const [p0, , , p3, p4, , p6] = participanteIds;
+    const original = await crearPartidaFinalizada(1);
+
+    const siguiente = await crearSiguienteEquipo({
+      partidaId: original.id,
+      solicitanteId: p0,
+      equipoDesafiante: [p3, p4, p6],
+    });
+
+    expect(siguiente.anotadorParticipanteId).toBe(p0);
+  });
+
+  it("si el Anotador anterior ganó, ignora nuevoAnotadorParticipanteId si vino igual", async () => {
+    const [p0, p1, , p3, p4, , p6] = participanteIds;
+    const original = await crearPartidaFinalizada(1);
+
+    const siguiente = await crearSiguienteEquipo({
+      partidaId: original.id,
+      solicitanteId: p0,
+      equipoDesafiante: [p3, p4, p6],
+      nuevoAnotadorParticipanteId: p1,
+    });
+
+    expect(siguiente.anotadorParticipanteId).toBe(p0);
+  });
+
+  it("si el Anotador anterior perdió, exige nuevoAnotadorParticipanteId", async () => {
+    const [p0, p1, p2, , , , p6] = participanteIds;
+    // equipoGanador: 2 -> gana equipo2 = [p3, p4, p5]; el Anotador (p0) quedó
+    // en equipo1, el que se reemplaza.
+    const original = await crearPartidaFinalizada(2);
+
+    await expect(
+      crearSiguienteEquipo({
+        partidaId: original.id,
+        solicitanteId: p0,
+        equipoDesafiante: [p1, p2, p6],
+      }),
+    ).rejects.toThrow("Elegí quién anota la Partida nueva");
+  });
+
+  it("si el Anotador anterior perdió, acepta como nuevo Anotador a alguien del Equipo ganador", async () => {
+    const [p0, p1, p2, , p4, , p6] = participanteIds;
+    const original = await crearPartidaFinalizada(2); // gana equipo2 = [p3, p4, p5]
+
+    const siguiente = await crearSiguienteEquipo({
+      partidaId: original.id,
+      solicitanteId: p0,
+      equipoDesafiante: [p1, p2, p6],
+      nuevoAnotadorParticipanteId: p4,
+    });
+
+    expect(siguiente.anotadorParticipanteId).toBe(p4);
+  });
+
+  it("si el Anotador anterior perdió, acepta como nuevo Anotador a alguien del Equipo desafiante", async () => {
+    const [p0, p1, p2, , , , p6] = participanteIds;
+    const original = await crearPartidaFinalizada(2);
+
+    const siguiente = await crearSiguienteEquipo({
+      partidaId: original.id,
+      solicitanteId: p0,
+      equipoDesafiante: [p1, p2, p6],
+      nuevoAnotadorParticipanteId: p6,
+    });
+
+    expect(siguiente.anotadorParticipanteId).toBe(p6);
+  });
+
+  it("rechaza si nuevoAnotadorParticipanteId no es uno de los 6 finales", async () => {
+    const [p0, p1, p2, , , , p6] = participanteIds;
+    const original = await crearPartidaFinalizada(2);
+
+    await expect(
+      crearSiguienteEquipo({
+        partidaId: original.id,
+        solicitanteId: p0,
+        equipoDesafiante: [p1, p2, p6],
+        // p0 no juega esta Partida nueva: perdió y quedó afuera de ambos
+        // Equipos (Equipo ganador = [p3, p4, p5], desafiante = [p1, p2, p6]).
+        nuevoAnotadorParticipanteId: p0,
+      }),
+    ).rejects.toThrow("El nuevo Anotador tiene que ser uno de los 6 Participantes de la Partida nueva");
+  });
+
+  it("rechaza si la Partida referenciada no está finalizada", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+    });
+
+    await expect(
+      crearSiguienteEquipo({
+        partidaId: partida.id,
+        solicitanteId: p0,
+        equipoDesafiante: [p3, p4, p5],
+      }),
+    ).rejects.toThrow("Solo se puede armar el Siguiente equipo desde una Partida finalizada");
+  });
+
+  it("rechaza si quien lo pide no era el Anotador de la Partida original", async () => {
+    const [, p1, , p3, p4, , p6] = participanteIds;
+    const original = await crearPartidaFinalizada(1);
+
+    await expect(
+      crearSiguienteEquipo({
+        partidaId: original.id,
+        solicitanteId: p1,
+        equipoDesafiante: [p3, p4, p6],
+      }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede armar el Siguiente equipo");
+  });
+
+  it("respeta la exclusividad existente (delega en crearPartida)", async () => {
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
+    const original = await crearPartidaFinalizada(1); // gana equipo1 = [p0, p1, p2], libera a todos
+
+    // Dos del propio Equipo ganador (p1, p2) quedan anotados en otra Partida
+    // en_curso aparte -- este Grupo de prueba no tiene gente suficiente para
+    // aislar el conflicto solo del lado del desafiante.
+    await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p1,
+      equipo1: [p1, p2, p6],
+      equipo2: [p3, p4, p5],
+    });
+
+    await expect(
+      crearSiguienteEquipo({
+        partidaId: original.id,
+        solicitanteId: p0,
+        equipoDesafiante: [p3, p4, p6],
+      }),
     ).rejects.toThrow("Alguno de los Participantes elegidos ya está jugando otra Partida");
   });
 });

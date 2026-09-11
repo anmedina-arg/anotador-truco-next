@@ -87,6 +87,15 @@ describe("ordenarAlfabeticamente", () => {
     expect(ordenarAlfabeticamente(miembros).map((m) => m.participanteId)).toEqual(["b", "a"]);
   });
 
+  it("desempata por participanteId para que el orden sea determinístico", () => {
+    const miembros = [
+      { participanteId: "z", nombre: "Ana", email: null },
+      { participanteId: "a", nombre: "Ana", email: null },
+    ];
+
+    expect(ordenarAlfabeticamente(miembros).map((m) => m.participanteId)).toEqual(["a", "z"]);
+  });
+
   it("no muta el array recibido", () => {
     const miembros = [
       { participanteId: "a", nombre: "Beto", email: null },

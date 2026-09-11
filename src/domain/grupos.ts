@@ -173,11 +173,13 @@ export function ordenarPorFrecuencia<T extends { partidasJugadas: number; partic
 // Orden alfabético por nombre (o email si no tiene nombre cargado) — el que
 // usa la lista de "Miembros" del Grupo, a diferencia del picker de armado de
 // Equipos que usa ordenarPorFrecuencia.
-export function ordenarAlfabeticamente<T extends { nombre: string | null; email: string | null }>(
-  miembros: T[],
-): T[] {
-  return [...miembros].sort((a, b) =>
-    (a.nombre || a.email || "").localeCompare(b.nombre || b.email || ""),
+export function ordenarAlfabeticamente<
+  T extends { nombre: string | null; email: string | null; participanteId: string },
+>(miembros: T[]): T[] {
+  return [...miembros].sort(
+    (a, b) =>
+      (a.nombre || a.email || "").localeCompare(b.nombre || b.email || "") ||
+      compararPorParticipanteId(a, b),
   );
 }
 

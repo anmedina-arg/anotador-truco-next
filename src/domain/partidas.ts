@@ -115,28 +115,92 @@ export async function crearPartida(input: {
   });
 }
 
+// Guarda compartida por crearRevancha y crearSiguienteEquipo: ambas parten
+// de una Partida finalizada, pedida por quien fue su Anotador. Un solo lugar
+// para estas 3 validaciones evita que una de las dos quede desactualizada si
+// esta regla cambia.
+async function obtenerPartidaFinalizadaDelAnotador(
+  partidaId: string,
+  solicitanteId: string,
+  mensajes: { noFinalizada: string; noAnotador: string },
+) {
+  const partida = await obtenerPartidaConEquipos(partidaId);
+  if (!partida) {
+    throw new Error("La Partida no existe");
+  }
+  if (partida.estado !== "finalizada") {
+    throw new Error(mensajes.noFinalizada);
+  }
+  if (!esAnotadorDePartida(partida, solicitanteId)) {
+    throw new Error(mensajes.noAnotador);
+  }
+  return partida;
+}
+
 // Repite la última Partida con un tap (ticket #12): mismos 6 Participantes,
 // misma división de Equipos y mismo Anotador que la Partida finalizada de
 // referencia, arrancando 0-0. Sin validaciones propias más allá de leer la
 // Partida original — delega en crearPartida para no duplicar sus reglas
 // (3+3, sin repetidos, exclusividad).
 export async function crearRevancha(input: { partidaId: string; solicitanteId: string }) {
-  const partida = await obtenerPartidaConEquipos(input.partidaId);
-  if (!partida) {
-    throw new Error("La Partida no existe");
-  }
-  if (partida.estado !== "finalizada") {
-    throw new Error("Solo se puede pedir Revancha de una Partida finalizada");
-  }
-  if (!esAnotadorDePartida(partida, input.solicitanteId)) {
-    throw new Error("Solo el Anotador de la Partida puede pedir Revancha");
-  }
+  const partida = await obtenerPartidaFinalizadaDelAnotador(input.partidaId, input.solicitanteId, {
+    noFinalizada: "Solo se puede pedir Revancha de una Partida finalizada",
+    noAnotador: "Solo el Anotador de la Partida puede pedir Revancha",
+  });
 
   return crearPartida({
     grupoId: partida.grupoId,
     anotadorParticipanteId: partida.anotadorParticipanteId,
     equipo1: partida.equipo1.map((p) => p.participanteId),
     equipo2: partida.equipo2.map((p) => p.participanteId),
+  });
+}
+
+// El Equipo ganador sigue, se elige un desafiante nuevo (ticket #13): mismo
+// Equipo ganador de la Partida finalizada de referencia, Equipo desafiante
+// con los Participantes indicados. Si quien pide esto (el Anotador
+// anterior) quedó en el Equipo ganador, sigue de Anotador; si quedó en el
+// que se reemplaza, hace falta indicar un nuevoAnotadorParticipanteId de
+// entre los 6 finales — la única excepción a "el Anotador se asigna
+// automáticamente a quien crea la Partida, sin transferencia" (ver
+// CONTEXT.md/issue #1), acotada a este flujo. Delega en crearPartida para
+// las reglas de siempre (3+3, sin repetidos, exclusividad).
+export async function crearSiguienteEquipo(input: {
+  partidaId: string;
+  solicitanteId: string;
+  equipoDesafiante: string[];
+  nuevoAnotadorParticipanteId?: string;
+}) {
+  const partida = await obtenerPartidaFinalizadaDelAnotador(input.partidaId, input.solicitanteId, {
+    noFinalizada: "Solo se puede armar el Siguiente equipo desde una Partida finalizada",
+    noAnotador: "Solo el Anotador de la Partida puede armar el Siguiente equipo",
+  });
+  if (partida.equipoGanador !== 1 && partida.equipoGanador !== 2) {
+    throw new Error("La Partida finalizada no tiene un Equipo ganador registrado");
+  }
+
+  const equipoGanador = partida.equipoGanador === 1 ? partida.equipo1 : partida.equipo2;
+  const equipoGanadorIds = equipoGanador.map((p) => p.participanteId);
+
+  let anotadorParticipanteId: string;
+  if (equipoGanadorIds.includes(input.solicitanteId)) {
+    anotadorParticipanteId = input.solicitanteId;
+  } else {
+    if (!input.nuevoAnotadorParticipanteId) {
+      throw new Error("Elegí quién anota la Partida nueva");
+    }
+    const participantesFinales = [...equipoGanadorIds, ...input.equipoDesafiante];
+    if (!participantesFinales.includes(input.nuevoAnotadorParticipanteId)) {
+      throw new Error("El nuevo Anotador tiene que ser uno de los 6 Participantes de la Partida nueva");
+    }
+    anotadorParticipanteId = input.nuevoAnotadorParticipanteId;
+  }
+
+  return crearPartida({
+    grupoId: partida.grupoId,
+    anotadorParticipanteId,
+    equipo1: equipoGanadorIds,
+    equipo2: input.equipoDesafiante,
   });
 }
 

@@ -44,6 +44,12 @@ export default async function PartidaDetallePage({
             ).
           </p>
           <BotonRevancha grupoId={grupoId} partidaId={partida.id} />
+          <a
+            href={`/grupos/${grupoId}/partidas/${partida.id}/siguiente-equipo`}
+            className="block rounded border p-2 text-center text-sm underline"
+          >
+            Siguiente equipo
+          </a>
         </>
       )}
       {partida.estado === "cancelada" && (
