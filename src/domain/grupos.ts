@@ -170,6 +170,17 @@ export function ordenarPorFrecuencia<T extends { partidasJugadas: number; partic
   );
 }
 
+// Orden alfabético por nombre (o email si no tiene nombre cargado) — el que
+// usa la lista de "Miembros" del Grupo, a diferencia del picker de armado de
+// Equipos que usa ordenarPorFrecuencia.
+export function ordenarAlfabeticamente<T extends { nombre: string | null; email: string | null }>(
+  miembros: T[],
+): T[] {
+  return [...miembros].sort((a, b) =>
+    (a.nombre || a.email || "").localeCompare(b.nombre || b.email || ""),
+  );
+}
+
 // Ratio puntos/Partidas jugadas (ver CONTEXT.md) — null cuando todavía no
 // jugó ninguna Partida, para no confundir "no jugó" con "ratio 0".
 export function calcularRatio(puntos: number, partidasJugadas: number): number | null {

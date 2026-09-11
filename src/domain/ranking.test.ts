@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ordenarPorRanking, ordenarPorFrecuencia, calcularRatio } from "./grupos";
+import { ordenarPorRanking, ordenarPorFrecuencia, ordenarAlfabeticamente, calcularRatio } from "./grupos";
 
 describe("ordenarPorRanking", () => {
   it("ordena de mayor a menor puntos", () => {
@@ -62,6 +62,39 @@ describe("ordenarPorFrecuencia", () => {
     const original = [...miembros];
 
     ordenarPorFrecuencia(miembros);
+
+    expect(miembros).toEqual(original);
+  });
+});
+
+describe("ordenarAlfabeticamente", () => {
+  it("ordena por nombre, sin importar mayúsculas/minúsculas", () => {
+    const miembros = [
+      { participanteId: "a", nombre: "Beto", email: null },
+      { participanteId: "b", nombre: "ana", email: null },
+      { participanteId: "c", nombre: "Carlos", email: null },
+    ];
+
+    expect(ordenarAlfabeticamente(miembros).map((m) => m.participanteId)).toEqual(["b", "a", "c"]);
+  });
+
+  it("usa el email como respaldo cuando no hay nombre", () => {
+    const miembros = [
+      { participanteId: "a", nombre: null, email: "zeta@example.com" },
+      { participanteId: "b", nombre: "Ana", email: null },
+    ];
+
+    expect(ordenarAlfabeticamente(miembros).map((m) => m.participanteId)).toEqual(["b", "a"]);
+  });
+
+  it("no muta el array recibido", () => {
+    const miembros = [
+      { participanteId: "a", nombre: "Beto", email: null },
+      { participanteId: "b", nombre: "Ana", email: null },
+    ];
+    const original = [...miembros];
+
+    ordenarAlfabeticamente(miembros);
 
     expect(miembros).toEqual(original);
   });

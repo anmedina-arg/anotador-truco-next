@@ -4,7 +4,7 @@ import {
   obtenerGrupoPorId,
   listarMiembrosDeGrupo,
   ordenarPorRanking,
-  ordenarPorFrecuencia,
+  ordenarAlfabeticamente,
   calcularRatio,
 } from "@/domain/grupos";
 import { listarPartidasEnCursoDeGrupo, esAnotadorDePartida } from "@/domain/partidas";
@@ -39,7 +39,7 @@ export default async function GrupoDetallePage({
 
   const esAdmin = grupo.adminParticipanteId === session.user.id;
   const ranking = ordenarPorRanking(miembros);
-  const miembrosPorFrecuencia = ordenarPorFrecuencia(miembros);
+  const miembrosAlfabetico = ordenarAlfabeticamente(miembros);
   const formatearRatio = (puntos: number, partidasJugadas: number) => {
     const ratio = calcularRatio(puntos, partidasJugadas);
     return ratio === null ? "—" : ratio.toFixed(2);
@@ -139,7 +139,7 @@ export default async function GrupoDetallePage({
       <section className="flex flex-col gap-2">
         <h2 className="font-semibold">Miembros</h2>
         <ul className="flex flex-col gap-2">
-          {miembrosPorFrecuencia.map((miembro) => (
+          {miembrosAlfabetico.map((miembro) => (
             <li
               key={miembro.participanteId}
               className="flex items-center justify-between rounded border p-3"
