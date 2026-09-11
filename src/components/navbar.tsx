@@ -17,7 +17,9 @@ export async function Navbar() {
           <form
             action={async () => {
               "use server";
-              await signOut({ redirectTo: "/" });
+              // "/" ahora requiere sesión (es la Home rediseñada) y rebota a
+              // "/login" solo si no la hay — ir directo evita ese salto extra.
+              await signOut({ redirectTo: "/login" });
             }}
             className="flex items-center gap-3"
           >

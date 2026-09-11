@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { usersTable, gruposTable, gruposParticipantesTable } from "../db/schema";
 
@@ -104,6 +104,23 @@ export async function listarGruposDeParticipante(participanteId: string) {
 export async function obtenerGrupoPorId(grupoId: string) {
   const db = getDb();
   const [grupo] = await db.select().from(gruposTable).where(eq(gruposTable.id, grupoId));
+  return grupo ?? null;
+}
+
+// El Grupo al que el Participante pertenece hace más tiempo — por su propia
+// fecha de alta a ese Grupo (grupoParticipante.fechaAlta), no por cuándo se
+// creó el Grupo en sí (alguien puede sumarse mucho después a un Grupo viejo).
+export async function obtenerGrupoMasAntiguoDeParticipante(participanteId: string) {
+  const db = getDb();
+
+  const [grupo] = await db
+    .select({ id: gruposTable.id, nombre: gruposTable.nombre })
+    .from(gruposParticipantesTable)
+    .innerJoin(gruposTable, eq(gruposTable.id, gruposParticipantesTable.grupoId))
+    .where(eq(gruposParticipantesTable.participanteId, participanteId))
+    .orderBy(asc(gruposParticipantesTable.fechaAlta))
+    .limit(1);
+
   return grupo ?? null;
 }
 

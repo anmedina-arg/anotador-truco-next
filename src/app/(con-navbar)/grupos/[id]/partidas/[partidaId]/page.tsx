@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { obtenerPartidaConEquipos } from "@/domain/partidas";
+import { obtenerPartidaConEquipos, esAnotadorDePartida } from "@/domain/partidas";
 import { nombresDeEquipo } from "@/domain/participantes";
 import { anotarPuntoAction, cancelarPartidaAction } from "./actions";
 
@@ -25,7 +25,7 @@ export default async function PartidaDetallePage({
   // El marcador en vivo es solo para quien anota esta Partida — ver
   // CONTEXT.md / historia de usuario 26 del ticket #1 (fuera de alcance para
   // el resto de los Participantes en esta versión).
-  if (partida.anotadorParticipanteId !== session.user.id) {
+  if (!esAnotadorDePartida(partida, session.user.id)) {
     notFound();
   }
 

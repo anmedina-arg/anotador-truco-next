@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { usersTable, gruposTable, gruposParticipantesTable } from "../db/schema";
 import { registrarParticipante } from "./participantes";
@@ -7,6 +7,7 @@ import {
   crearGrupo,
   listarGruposDeParticipante,
   listarMiembrosDeGrupo,
+  obtenerGrupoMasAntiguoDeParticipante,
   unirseAGrupo,
   regenerarCodigoInvitacion,
   sacarMiembro,
@@ -100,6 +101,45 @@ describe("listarGruposDeParticipante", () => {
     const grupos = await listarGruposDeParticipante(ajenoId);
 
     expect(grupos).toHaveLength(0);
+  });
+});
+
+describe("obtenerGrupoMasAntiguoDeParticipante", () => {
+  it("devuelve el Grupo al que el Participante se sumó primero, no el más nuevo", async () => {
+    const grupo1 = await crearGrupo({ nombre: "El más viejo", adminParticipanteId: adminId });
+    const grupo2 = await crearGrupo({ nombre: "El más nuevo", adminParticipanteId: adminId });
+
+    // Fechas de alta bien separadas y a propósito en orden inverso al de
+    // creación — si el test pasara igual sin esto, podría ser porque la
+    // función ordena por orden de creación/inserción y no por fechaAlta.
+    const db = getDb();
+    await db
+      .update(gruposParticipantesTable)
+      .set({ fechaAlta: new Date("2020-01-01") })
+      .where(
+        and(
+          eq(gruposParticipantesTable.grupoId, grupo2.id),
+          eq(gruposParticipantesTable.participanteId, adminId),
+        ),
+      );
+    await db
+      .update(gruposParticipantesTable)
+      .set({ fechaAlta: new Date("2021-01-01") })
+      .where(
+        and(
+          eq(gruposParticipantesTable.grupoId, grupo1.id),
+          eq(gruposParticipantesTable.participanteId, adminId),
+        ),
+      );
+
+    const masAntiguo = await obtenerGrupoMasAntiguoDeParticipante(adminId);
+
+    expect(masAntiguo?.id).toBe(grupo2.id);
+  });
+
+  it("devuelve null si el Participante no es miembro de ningún Grupo", async () => {
+    const masAntiguo = await obtenerGrupoMasAntiguoDeParticipante(ajenoId);
+    expect(masAntiguo).toBeNull();
   });
 });
 

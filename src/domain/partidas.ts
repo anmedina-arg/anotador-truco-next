@@ -10,6 +10,17 @@ import {
 
 const PUNTOS_PARA_GANAR = 30;
 
+// El Anotador es quien creó la Partida (ver CONTEXT.md) — un solo lugar
+// para esta comparación, usado tanto para autorizar (anotarPunto,
+// cancelarPartida) como para decidir qué mostrar en la UI (acceso al
+// tanteador en vivo).
+export function esAnotadorDePartida(
+  partida: { anotadorParticipanteId: string },
+  participanteId: string,
+): boolean {
+  return partida.anotadorParticipanteId === participanteId;
+}
+
 export async function crearPartida(input: {
   grupoId: string;
   anotadorParticipanteId: string;
@@ -213,7 +224,7 @@ export async function anotarPunto(input: {
     if (partida.estado !== "en_curso") {
       throw new Error("La Partida no está en curso");
     }
-    if (partida.anotadorParticipanteId !== input.solicitanteId) {
+    if (!esAnotadorDePartida(partida, input.solicitanteId)) {
       throw new Error("Solo el Anotador de la Partida puede cargar puntos");
     }
 
@@ -321,7 +332,7 @@ export async function cancelarPartida(input: { partidaId: string; solicitanteId:
     if (partida.estado !== "en_curso") {
       throw new Error("La Partida no está en curso");
     }
-    if (partida.anotadorParticipanteId !== input.solicitanteId) {
+    if (!esAnotadorDePartida(partida, input.solicitanteId)) {
       throw new Error("Solo el Anotador de la Partida puede cancelarla");
     }
 

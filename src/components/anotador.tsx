@@ -1,5 +1,10 @@
 'use client';
 
+// Sin uso por ahora a propósito, no es código huérfano: es la base visual
+// (fósforos) para el rediseño de la pantalla del marcador (sesión de UX,
+// "no elimines el componente con los fosforos"). Se retoma cuando le toque
+// su turno en la secuencia de pantallas.
+
 import { useState } from "react";
 import Image from 'next/image';
 

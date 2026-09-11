@@ -6,7 +6,7 @@ import {
   ordenarPorRanking,
   calcularRatio,
 } from "@/domain/grupos";
-import { listarPartidasEnCursoDeGrupo } from "@/domain/partidas";
+import { listarPartidasEnCursoDeGrupo, esAnotadorDePartida } from "@/domain/partidas";
 import { nombresDeEquipo } from "@/domain/participantes";
 import { regenerarCodigoInvitacionAction, sacarMiembroAction } from "./actions";
 import { LinkInvitacion } from "./link-invitacion";
@@ -84,7 +84,7 @@ export default async function GrupoDetallePage({
                   {nombresDeEquipo(partida.equipo2)}
                 </p>
               );
-              const esAnotador = partida.anotadorParticipanteId === session.user.id;
+              const esAnotador = esAnotadorDePartida(partida, session.user.id);
 
               return (
                 <li key={partida.id} className="rounded border p-3 text-sm">
