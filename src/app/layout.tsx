@@ -10,8 +10,8 @@ export const metadata = {
 
 // Sin chrome global a propósito: Login (sin ningún header) y Home (círculo
 // flotante "Mi perfil") tienen su propio chrome — cada page.tsx decide el
-// suyo. Ver el diseño acordado para el resto de las pantallas, que por ahora
-// siguen usando <Navbar /> explícito hasta que les toque su rediseño.
+// suyo. El resto de las pantallas comparten ese mismo círculo flotante vía
+// el layout de (con-navbar)/.
 export default function RootLayout({
   children,
 }: {

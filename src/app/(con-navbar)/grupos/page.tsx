@@ -11,7 +11,9 @@ export default async function GruposPage() {
   const grupos = await listarGruposDeParticipante(session.user.id);
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-4 p-6">
+    <main className="mx-auto flex max-w-md flex-col gap-4 p-6 pt-16">
+      {/* pt-16: el link "Crear Grupo" de abajo queda pegado arriba a la
+          derecha, justo donde flota el círculo de perfil. */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Mis Grupos</h1>
         <a href="/grupos/nuevo" className="underline">

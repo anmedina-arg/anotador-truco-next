@@ -55,8 +55,8 @@ declare module "next-auth" {
   }
 }
 
-// Memoizado por request: Navbar, cada page y cada Server Action que llaman a
-// auth() en el mismo request comparten un solo chequeo de sesión en vez de
-// repetirlo 2-3 veces.
+// Memoizado por request: el layout con el círculo de perfil, cada page y
+// cada Server Action que llaman a auth() en el mismo request comparten un
+// solo chequeo de sesión en vez de repetirlo 2-3 veces.
 export const auth = cache(authSinCache);
 export { handlers, signIn, signOut };

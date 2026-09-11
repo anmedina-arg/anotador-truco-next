@@ -21,6 +21,9 @@ export function PerfilFlotante({
         {inicial}
       </summary>
       <div className="mt-2 flex w-44 flex-col gap-1 rounded border bg-white p-2 text-sm shadow-md">
+        <a href="/" className="rounded px-2 py-1 hover:bg-gray-100">
+          Inicio
+        </a>
         {/* Ver mi perfil: contenido todavía sin definir — se agrega el link
             cuando esa pantalla exista, por ahora es solo un placeholder. */}
         <span className="rounded px-2 py-1 text-gray-400">Ver mi perfil</span>
