@@ -26,8 +26,9 @@ export async function crearPartidaAction(
     else if (value === "2") equipo2.push(participanteId);
   }
 
+  let partida: Awaited<ReturnType<typeof crearPartida>>;
   try {
-    await crearPartida({
+    partida = await crearPartida({
       grupoId,
       anotadorParticipanteId: session.user.id,
       equipo1,
@@ -40,5 +41,7 @@ export async function crearPartidaAction(
     throw error;
   }
 
-  redirect(`/grupos/${grupoId}`);
+  // Directo al marcador en vez de a la página del Grupo — evita el paso
+  // extra de tener que ubicar el link de la Partida recién creada.
+  redirect(`/grupos/${grupoId}/partidas/${partida.id}`);
 }

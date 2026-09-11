@@ -68,6 +68,17 @@ export default async function Home() {
           </section>
         )}
 
+        {grupo && (
+          <section>
+            <a
+              href={`/grupos/${grupo.id}/partidas/nueva`}
+              className="block rounded border p-3 text-sm underline"
+            >
+              Nueva Partida
+            </a>
+          </section>
+        )}
+
         {grupo && ranking.length > 0 && (
           <section className="flex flex-col gap-2">
             <h2 className="font-semibold">Ranking</h2>
