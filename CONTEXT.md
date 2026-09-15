@@ -19,8 +19,9 @@ Grupo) — separado del rol de Anotador, que es por Partida, no por Grupo.
 
 **Participante**:
 Miembro de un Grupo, con cuenta propia (login por email+contraseña o Google).
-Se une a un Grupo mediante un código/link de invitación. Acumula una marca
-personal (puntos de Ranking) por cada Partida ganada.
+Se une a un Grupo mediante un código/link de invitación. Acumula puntos de
+Ranking según el nivel de Victoria (simple/doble/triple) de cada Partida
+ganada — ver Ranking.
 _Avoid_: Jugador (usar Participante como término canónico salvo al hablar del
 rol dentro de una Mano/Partida ya en curso).
 
@@ -61,11 +62,35 @@ nombrar el rango en el que está el contador — no hay reseteo ni cambio de
 lógica al pasar de una mitad a la otra, los puntos siguen sumando en orden
 consecutivo.
 
+**Victoria simple / doble / triple**:
+Los tres niveles de puntaje que aporta una Partida ganada al Ranking de cada
+Participante del Equipo ganador, según el puntaje final del Equipo perdedor
+al momento en que termina la Partida: **Victoria simple** (1 punto) si el
+perdedor terminó entre 16 y 29; **Victoria doble** (2 puntos) si terminó
+entre 1 y 15; **Victoria triple** (3 puntos) si terminó en 0. Estos rangos
+son propios de esta regla y no reutilizan Malas/Buenas (que describen el
+contador en vivo de una Partida, 0-15/16-30) — un perdedor "en malas" puede
+haber dado una Victoria doble o triple según haya hecho algún punto o
+ninguno.
+_Nota de dominio_: "duerme afuera" es un término coloquial del truco que
+cubre Victoria doble y triple juntas (el perdedor no pasó de las malas,
+0-15) — no es alias de un nivel puntual, sino una forma informal de
+referirse a cualquiera de esas dos.
+
 **Ranking**:
-Orden de los Participantes de un Grupo por puntos acumulados (1 punto por
-cada Partida ganada — numéricamente los puntos de Ranking son siempre iguales
-a la cantidad de Partidas ganadas). Es un concepto distinto del puntaje de
-una Partida (0-30) — el Ranking cuenta victorias, no puntos de juego. El
-dashboard de un Participante dentro de un Grupo muestra: puntos, Partidas
-jugadas, Partidas ganadas, Partidas perdidas (no existen Partidas empatadas)
-y el ratio puntos/Partidas jugadas.
+Orden de los Participantes de un Grupo por **promedio**: puntos acumulados
+dividido Partidas jugadas, de mayor a menor. Los puntos ya no son 1 fijo por
+Partida ganada — cada Partida ganada aporta, a cada Participante del Equipo
+ganador, los puntos de una Victoria simple, doble o triple (ver ese
+término). Es un concepto distinto del puntaje de una Partida (0-30) — el
+Ranking cuenta rendimiento ponderado por victoria, no puntos de juego. Un
+Participante con 0 Partidas jugadas no tiene promedio calculable — se
+muestra al final del Ranking, aparte, sin excluirlo de la lista. No hay
+umbral mínimo de Partidas jugadas para entrar al orden por promedio (acepta
+a propósito que pocas Partidas con promedio alto puedan rankear más arriba
+que muchas Partidas con promedio algo menor — se revisa si molesta en la
+práctica, no se resuelve preventivamente). El dashboard de un Participante
+dentro de un Grupo muestra: puntos acumulados, Partidas jugadas, Partidas
+ganadas (total, desglosadas en simples/dobles/triples), Partidas perdidas
+(siempre Partidas jugadas menos Partidas ganadas — no existen Partidas
+empatadas) y el promedio que define el orden del Ranking.
