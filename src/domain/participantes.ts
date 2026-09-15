@@ -20,6 +20,15 @@ export function nombresDeEquipo(equipo: ParticipanteBasico[]) {
   return equipo.map(nombreDeParticipante).join(", ");
 }
 
+export function inicialesDeParticipante(participante: ParticipanteBasico) {
+  const palabras = nombreDeParticipante(participante).trim().split(/\s+/).filter(Boolean);
+  if (palabras.length === 0) {
+    return "?";
+  }
+  const [primera, segunda] = palabras;
+  return (primera.charAt(0) + (segunda?.charAt(0) ?? "")).toUpperCase();
+}
+
 function normalizarEmail(email: string) {
   return email.trim().toLowerCase();
 }

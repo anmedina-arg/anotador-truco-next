@@ -6,40 +6,14 @@
 // su turno en la secuencia de pantallas.
 
 import { useState } from "react";
-import Image from 'next/image';
-
-const fosforo1 = require('../../public/fosforos-main/fosforos-1.png');
-const fosforo2 = require('../../public/fosforos-main/fosforos-2.png');
-const fosforo3 = require('../../public/fosforos-main/fosforos-3.png');
-const fosforo4 = require('../../public/fosforos-main/fosforos-4.png');
-const fosforo5 = require('../../public/fosforos-main/fosforos-5.png');
-const fosforo6 = require('../../public/fosforos-main/fosforos-6.png');
-const fosforo7 = require('../../public/fosforos-main/fosforos-7.png');
-const fosforo8 = require('../../public/fosforos-main/fosforos-8.png');
-const fosforo9 = require('../../public/fosforos-main/fosforos-9.png');
-const fosforo10 = require('../../public/fosforos-main/fosforos-10.png');
-const fosforo11 = require('../../public/fosforos-main/fosforos-11.png');
-const fosforo12 = require('../../public/fosforos-main/fosforos-12.png');
-const fosforo13 = require('../../public/fosforos-main/fosforos-13.png');
-const fosforo14 = require('../../public/fosforos-main/fosforos-14.png');
-const fosforo15 = require('../../public/fosforos-main/fosforos-15.png');
-
-const fosforosPorIndice = [
-  fosforo1, fosforo2, fosforo3, fosforo4, fosforo5,
-  fosforo6, fosforo7, fosforo8, fosforo9, fosforo10,
-  fosforo11, fosforo12, fosforo13, fosforo14, fosforo15,
-];
+import { FosforosTally } from "./fosforos-tally";
 
 export const Anotador = (): any => {
 
   const [state, setState] = useState(0);
 
   const good = state > 15 ? 'buenas' : 'malas';
-
-  const fosforos = () => {
-    const indice = good === 'buenas' ? state - 15 : state;
-    return fosforosPorIndice[indice - 1];
-  };
+  const puntosDeLaFase = good === 'buenas' ? state - 15 : state;
 
   const add = () => {
     if (state < 30) {
@@ -63,13 +37,10 @@ export const Anotador = (): any => {
         <button onClick={add}>+</button>
         <button onClick={remove}>-</button>
       </div>
-      <div onClick={add} className="border-2 border-black h-screen w-40 self-center">
-        {
-          state === 0
-            ?
-            <></>
-            : <Image src={fosforos()} alt='fosforo 1' width={100} height={100} className="m-auto mt-2" />
-        }
+      <div onClick={add} className="border-2 border-black h-screen w-40 self-center p-2">
+        <div className="mx-auto flex h-full w-full flex-col items-center">
+          <FosforosTally puntos={puntosDeLaFase} colorClase={good === 'buenas' ? 'bg-accent2' : 'bg-ink'} />
+        </div>
       </div>
     </div>
   )
