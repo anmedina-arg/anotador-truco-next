@@ -10,6 +10,27 @@ export class CodigoInvitacionInvalidoError extends Error {
   }
 }
 
+export class ParticipanteNoEncontradoError extends Error {
+  constructor() {
+    super("No hay ningún Participante registrado con ese email");
+    this.name = "ParticipanteNoEncontradoError";
+  }
+}
+
+export class YaEsMiembroError extends Error {
+  constructor() {
+    super("Ese Participante ya es miembro del Grupo");
+    this.name = "YaEsMiembroError";
+  }
+}
+
+export class EstadisticasInvalidasError extends Error {
+  constructor(mensaje: string) {
+    super(mensaje);
+    this.name = "EstadisticasInvalidasError";
+  }
+}
+
 function generarCodigoInvitacion() {
   return randomBytes(6).toString("base64url");
 }
@@ -232,6 +253,48 @@ export async function unirseAGrupo(input: {
   return grupo;
 }
 
+// Alta directa por el admin (a diferencia de unirseAGrupo, que es
+// autoservicio vía código): busca por email exacto entre los Participantes
+// ya registrados, no crea cuentas nuevas.
+export async function agregarMiembroPorEmail(input: {
+  grupoId: string;
+  solicitanteId: string;
+  email: string;
+}) {
+  await requerirAdmin(input.grupoId, input.solicitanteId);
+
+  const db = getDb();
+  const email = input.email.trim().toLowerCase();
+
+  const [participante] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, email));
+
+  if (!participante) {
+    throw new ParticipanteNoEncontradoError();
+  }
+
+  const [yaEsMiembro] = await db
+    .select({ grupoId: gruposParticipantesTable.grupoId })
+    .from(gruposParticipantesTable)
+    .where(
+      and(
+        eq(gruposParticipantesTable.grupoId, input.grupoId),
+        eq(gruposParticipantesTable.participanteId, participante.id),
+      ),
+    );
+
+  if (yaEsMiembro) {
+    throw new YaEsMiembroError();
+  }
+
+  await db.insert(gruposParticipantesTable).values({
+    grupoId: input.grupoId,
+    participanteId: participante.id,
+  });
+}
+
 export async function regenerarCodigoInvitacion(input: {
   grupoId: string;
   solicitanteId: string;
@@ -270,4 +333,47 @@ export async function sacarMiembro(input: {
         eq(gruposParticipantesTable.participanteId, input.participanteId),
       ),
     );
+}
+
+// Corrección manual del admin (ej. una Partida jugada fuera de la app, o un
+// error de carga) — puntos se recalcula como partidasGanadas para no romper
+// el invariante que ya usa el resto del Ranking (puntos = 1 por victoria,
+// ver el UPDATE de anotarPunto/cerrarPartida en partidas.ts).
+export async function actualizarEstadisticas(input: {
+  grupoId: string;
+  solicitanteId: string;
+  participanteId: string;
+  partidasJugadas: number;
+  partidasGanadas: number;
+  partidasPerdidas: number;
+}) {
+  await requerirAdmin(input.grupoId, input.solicitanteId);
+
+  const { partidasJugadas, partidasGanadas, partidasPerdidas } = input;
+  if (
+    [partidasJugadas, partidasGanadas, partidasPerdidas].some(
+      (valor) => !Number.isInteger(valor) || valor < 0,
+    )
+  ) {
+    throw new EstadisticasInvalidasError("Los valores tienen que ser números enteros, 0 o más");
+  }
+  if (partidasGanadas + partidasPerdidas > partidasJugadas) {
+    throw new EstadisticasInvalidasError("Ganadas + Perdidas no puede ser más que Jugadas");
+  }
+
+  const db = getDb();
+  const actualizado = await db
+    .update(gruposParticipantesTable)
+    .set({ partidasJugadas, partidasGanadas, partidasPerdidas, puntos: partidasGanadas })
+    .where(
+      and(
+        eq(gruposParticipantesTable.grupoId, input.grupoId),
+        eq(gruposParticipantesTable.participanteId, input.participanteId),
+      ),
+    )
+    .returning({ grupoId: gruposParticipantesTable.grupoId });
+
+  if (actualizado.length === 0) {
+    throw new Error("Ese Participante no es miembro del Grupo");
+  }
 }

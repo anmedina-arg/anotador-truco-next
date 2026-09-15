@@ -8,9 +8,10 @@ import {
   calcularRatio,
 } from "@/domain/grupos";
 import { listarPartidasEnCursoDeGrupo, esAnotadorDePartida } from "@/domain/partidas";
-import { nombresDeEquipo } from "@/domain/participantes";
-import { regenerarCodigoInvitacionAction, sacarMiembroAction } from "./actions";
-import { LinkInvitacion } from "./link-invitacion";
+import { nombresDeEquipo, inicialesDeParticipante } from "@/domain/participantes";
+import { sacarMiembroAction } from "./actions";
+import { Invitar } from "./invitar";
+import { EditarEstadisticas } from "./editar-estadisticas";
 
 export default async function GrupoDetallePage({
   params,
@@ -54,18 +55,7 @@ export default async function GrupoDetallePage({
         <h1 className="font-display text-2xl font-bold text-ink">{grupo.nombre}</h1>
       </div>
 
-      {esAdmin && (
-        <section className="flex flex-col gap-2">
-          <h2 className="font-display text-lg font-bold text-ink">Invitar</h2>
-          <LinkInvitacion codigo={grupo.codigoInvitacion} />
-          <form action={regenerarCodigoInvitacionAction}>
-            <input type="hidden" name="grupoId" value={grupo.id} />
-            <button type="submit" className="text-sm font-bold text-muted hover:text-accent">
-              Generar un código nuevo (invalida el anterior)
-            </button>
-          </form>
-        </section>
-      )}
+      {esAdmin && <Invitar grupoId={grupo.id} codigo={grupo.codigoInvitacion} />}
 
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
@@ -116,26 +106,35 @@ export default async function GrupoDetallePage({
       <section className="flex flex-col gap-2">
         <h2 className="font-display text-lg font-bold text-ink">Ranking</h2>
         <div className="overflow-x-auto rounded-2xl border-2 border-line bg-surface shadow-pop">
-          <table className="w-full text-sm">
+          <table className="w-full table-fixed text-sm">
             <thead>
-              <tr className="border-b-2 border-line text-xs font-bold uppercase tracking-wide text-muted">
-                <th className="p-3 text-left font-bold">Participante</th>
-                <th className="p-3 text-right font-bold">Pts</th>
-                <th className="p-3 text-right font-bold">PJ</th>
-                <th className="p-3 text-right font-bold">PG</th>
-                <th className="p-3 text-right font-bold">PP</th>
-                <th className="p-3 text-right font-bold">Ratio</th>
+              <tr className="border-b-2 border-line text-[10px] font-bold uppercase tracking-wide text-muted">
+                <th className="w-16 p-2 text-center font-bold">Participante</th>
+                <th className="p-2 text-right font-bold">Pts</th>
+                <th className="p-2 text-right font-bold">PJ</th>
+                <th className="p-2 text-right font-bold">PG</th>
+                <th className="p-2 text-right font-bold">PP</th>
+                <th className="p-2 text-right font-bold">Ratio</th>
               </tr>
             </thead>
             <tbody>
               {ranking.map((miembro) => (
                 <tr key={miembro.participanteId} className="border-b border-line font-bold last:border-0">
-                  <td className="p-3 text-ink">{miembro.nombre || miembro.email}</td>
-                  <td className="p-3 text-right text-accent">{miembro.puntos}</td>
-                  <td className="p-3 text-right text-muted">{miembro.partidasJugadas}</td>
-                  <td className="p-3 text-right text-muted">{miembro.partidasGanadas}</td>
-                  <td className="p-3 text-right text-muted">{miembro.partidasPerdidas}</td>
-                  <td className="p-3 text-right text-muted">
+                  <td className="p-2">
+                    <div className="flex flex-col items-center gap-1">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-accent bg-accent-soft text-xs font-bold text-accent">
+                        {inicialesDeParticipante(miembro)}
+                      </span>
+                      <span className="break-words text-center text-[10px] font-bold leading-tight text-ink">
+                        {miembro.nombre || miembro.email}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="p-2 text-right text-accent">{miembro.puntos}</td>
+                  <td className="p-2 text-right text-muted">{miembro.partidasJugadas}</td>
+                  <td className="p-2 text-right text-muted">{miembro.partidasGanadas}</td>
+                  <td className="p-2 text-right text-muted">{miembro.partidasPerdidas}</td>
+                  <td className="p-2 text-right text-muted">
                     {formatearRatio(miembro.puntos, miembro.partidasJugadas)}
                   </td>
                 </tr>
@@ -151,26 +150,37 @@ export default async function GrupoDetallePage({
           {miembrosAlfabetico.map((miembro) => (
             <li
               key={miembro.participanteId}
-              className="flex items-center justify-between rounded-2xl border-2 border-line bg-surface p-3.5 font-bold text-ink shadow-pop"
+              className="flex flex-col gap-2 rounded-2xl border-2 border-line bg-surface p-3.5 font-bold text-ink shadow-pop"
             >
-              <span>
-                {miembro.nombre || miembro.email}
-                {miembro.participanteId === grupo.adminParticipanteId && (
-                  <span className="ml-2 text-xs font-bold text-muted">(admin)</span>
+              <div className="flex items-center justify-between">
+                <span>
+                  {miembro.nombre || miembro.email}
+                  {miembro.participanteId === grupo.adminParticipanteId && (
+                    <span className="ml-2 text-xs font-bold text-muted">(admin)</span>
+                  )}
+                </span>
+                {esAdmin && miembro.participanteId !== grupo.adminParticipanteId && (
+                  <form action={sacarMiembroAction}>
+                    <input type="hidden" name="grupoId" value={grupo.id} />
+                    <input
+                      type="hidden"
+                      name="participanteId"
+                      value={miembro.participanteId}
+                    />
+                    <button type="submit" className="text-sm font-bold text-danger hover:text-danger/80">
+                      Sacar
+                    </button>
+                  </form>
                 )}
-              </span>
-              {esAdmin && miembro.participanteId !== grupo.adminParticipanteId && (
-                <form action={sacarMiembroAction}>
-                  <input type="hidden" name="grupoId" value={grupo.id} />
-                  <input
-                    type="hidden"
-                    name="participanteId"
-                    value={miembro.participanteId}
-                  />
-                  <button type="submit" className="text-sm font-bold text-danger hover:text-danger/80">
-                    Sacar
-                  </button>
-                </form>
+              </div>
+              {esAdmin && (
+                <EditarEstadisticas
+                  grupoId={grupo.id}
+                  participanteId={miembro.participanteId}
+                  partidasJugadas={miembro.partidasJugadas}
+                  partidasGanadas={miembro.partidasGanadas}
+                  partidasPerdidas={miembro.partidasPerdidas}
+                />
               )}
             </li>
           ))}
