@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { ordenarPorRanking, ordenarPorFrecuencia, ordenarAlfabeticamente, calcularRatio } from "./grupos";
+import {
+  ordenarPorRanking,
+  ordenarPorFrecuencia,
+  ordenarAlfabeticamente,
+  calcularRatio,
+  nivelDeVictoria,
+  calcularEstadisticasRanking,
+} from "./grupos";
 
 describe("ordenarPorRanking", () => {
   it("ordena de mayor a menor puntos", () => {
@@ -116,5 +123,74 @@ describe("calcularRatio", () => {
 
   it("devuelve null cuando todavía no jugó ninguna Partida", () => {
     expect(calcularRatio(0, 0)).toBeNull();
+  });
+});
+
+describe("nivelDeVictoria", () => {
+  it("es triple cuando el perdedor terminó en 0", () => {
+    expect(nivelDeVictoria(0)).toBe("triple");
+  });
+
+  it("es doble en el límite inferior del rango (1)", () => {
+    expect(nivelDeVictoria(1)).toBe("doble");
+  });
+
+  it("es doble en el límite superior del rango (15)", () => {
+    expect(nivelDeVictoria(15)).toBe("doble");
+  });
+
+  it("es simple en el límite inferior del rango (16)", () => {
+    expect(nivelDeVictoria(16)).toBe("simple");
+  });
+
+  it("es simple en el límite superior del rango (29)", () => {
+    expect(nivelDeVictoria(29)).toBe("simple");
+  });
+});
+
+describe("calcularEstadisticasRanking", () => {
+  it("una sola Victoria simple da 1 punto", () => {
+    expect(
+      calcularEstadisticasRanking({
+        partidasJugadas: 1,
+        partidasGanadas: 1,
+        partidasGanadasDobles: 0,
+        partidasGanadasTriples: 0,
+      }),
+    ).toEqual({ puntos: 1, partidasPerdidas: 0 });
+  });
+
+  it("combina simples, dobles y triples con sus pesos (1/2/3)", () => {
+    // 5 ganadas: 3 simples (implícitas) + 1 doble + 1 triple = 3 + 2 + 3 = 8
+    expect(
+      calcularEstadisticasRanking({
+        partidasJugadas: 8,
+        partidasGanadas: 5,
+        partidasGanadasDobles: 1,
+        partidasGanadasTriples: 1,
+      }),
+    ).toEqual({ puntos: 8, partidasPerdidas: 3 });
+  });
+
+  it("un Participante sin Partidas jugadas da 0 puntos y 0 perdidas", () => {
+    expect(
+      calcularEstadisticasRanking({
+        partidasJugadas: 0,
+        partidasGanadas: 0,
+        partidasGanadasDobles: 0,
+        partidasGanadasTriples: 0,
+      }),
+    ).toEqual({ puntos: 0, partidasPerdidas: 0 });
+  });
+
+  it("partidasPerdidas es siempre jugadas menos ganadas", () => {
+    expect(
+      calcularEstadisticasRanking({
+        partidasJugadas: 10,
+        partidasGanadas: 2,
+        partidasGanadasDobles: 0,
+        partidasGanadasTriples: 0,
+      }),
+    ).toEqual({ puntos: 2, partidasPerdidas: 8 });
   });
 });

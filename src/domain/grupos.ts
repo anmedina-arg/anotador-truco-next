@@ -210,6 +210,38 @@ export function calcularRatio(puntos: number, partidasJugadas: number): number |
   return partidasJugadas === 0 ? null : puntos / partidasJugadas;
 }
 
+// Nivel de Victoria (ver CONTEXT.md) según el puntaje final del Equipo
+// perdedor al cerrarse la Partida. Rangos propios de esta regla — no
+// reutilizan Malas/Buenas (0-15/16-30, contador en vivo de una Partida).
+export function nivelDeVictoria(puntajeFinalDelPerdedor: number): "simple" | "doble" | "triple" {
+  if (puntajeFinalDelPerdedor === 0) return "triple";
+  if (puntajeFinalDelPerdedor <= 15) return "doble";
+  return "simple";
+}
+
+// Único lugar que calcula puntos/partidasPerdidas de un grupo_participante
+// (ver CONTEXT.md, Ranking) — tanto anotarPunto (cierre de Partida en vivo,
+// ticket #16) como actualizarEstadisticas (corrección manual del admin,
+// ticket #17) tienen que pasar por acá al escribir esos dos campos, para no
+// duplicar la fórmula (todavía no lo hacen — este ticket #15 solo deja la
+// función lista). Simples quedan implícitas (ganadas - dobles - triples):
+// puntos = simples×1 + dobles×2 + triples×3, que se simplifica a
+// ganadas + dobles + 2×triples. No valida que dobles+triples <= ganadas —
+// esa validación es responsabilidad del caller (ver actualizarEstadisticas).
+export function calcularEstadisticasRanking(input: {
+  partidasJugadas: number;
+  partidasGanadas: number;
+  partidasGanadasDobles: number;
+  partidasGanadasTriples: number;
+}): { puntos: number; partidasPerdidas: number } {
+  const { partidasJugadas, partidasGanadas, partidasGanadasDobles, partidasGanadasTriples } = input;
+
+  return {
+    puntos: partidasGanadas + partidasGanadasDobles + 2 * partidasGanadasTriples,
+    partidasPerdidas: partidasJugadas - partidasGanadas,
+  };
+}
+
 export async function unirseAGrupo(input: {
   codigoInvitacion: string;
   participanteId: string;

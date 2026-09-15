@@ -1,0 +1,2 @@
+ALTER TABLE "grupo_participante" ADD COLUMN "partidasGanadasDobles" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "grupo_participante" ADD COLUMN "partidasGanadasTriples" integer DEFAULT 0 NOT NULL;

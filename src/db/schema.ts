@@ -87,9 +87,12 @@ export const gruposTable = pgTable("grupo", {
 });
 
 // grupo_participante (ver CONTEXT.md): membresía de un Participante en un
-// Grupo, con sus estadísticas de Ranking (puntos = partidas ganadas). Las
-// columnas de estadística arrancan en 0 y las actualiza el ticket #6 al
-// cerrar una Partida.
+// Grupo, con sus estadísticas de Ranking. puntos ya no es 1 punto fijo por
+// Partida ganada — sale de calcularEstadisticasRanking (domain/grupos.ts) a
+// partir de partidasGanadas/partidasGanadasDobles/partidasGanadasTriples
+// (Victoria simple/doble/triple, ver CONTEXT.md). Las columnas de
+// estadística arrancan en 0 y las actualiza el ticket #16 (anotarPunto) o el
+// #17 (corrección manual del admin).
 export const gruposParticipantesTable = pgTable(
   "grupo_participante",
   {
@@ -103,6 +106,8 @@ export const gruposParticipantesTable = pgTable(
     puntos: integer("puntos").notNull().default(0),
     partidasJugadas: integer("partidasJugadas").notNull().default(0),
     partidasGanadas: integer("partidasGanadas").notNull().default(0),
+    partidasGanadasDobles: integer("partidasGanadasDobles").notNull().default(0),
+    partidasGanadasTriples: integer("partidasGanadasTriples").notNull().default(0),
     partidasPerdidas: integer("partidasPerdidas").notNull().default(0),
   },
   (gp) => [primaryKey({ columns: [gp.grupoId, gp.participanteId] })],

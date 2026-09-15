@@ -29,6 +29,13 @@
       "when": 1789012380790,
       "tag": "0003_premium_sir_ram",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789509054347,
+      "tag": "0004_slow_sunfire",
+      "breakpoints": true
     }
   ]
 }
