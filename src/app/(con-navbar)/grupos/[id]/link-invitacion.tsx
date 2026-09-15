@@ -17,7 +17,7 @@ export function LinkInvitacion({ codigo }: { codigo: string }) {
       <input
         readOnly
         value={link}
-        className="flex-1 rounded border p-2 text-sm text-gray-500"
+        className="flex-1 rounded-2xl border-2 border-line bg-surface p-3 text-sm text-muted"
       />
       <button
         type="button"
@@ -31,7 +31,7 @@ export function LinkInvitacion({ codigo }: { codigo: string }) {
             // ya está seleccionable a mano en el input de al lado.
           }
         }}
-        className="rounded border px-3 py-2 text-sm"
+        className="rounded-2xl bg-accent px-4 py-3 text-sm font-display font-bold text-white shadow-pop-accent-sm"
       >
         {copiado ? "Copiado" : "Copiar"}
       </button>

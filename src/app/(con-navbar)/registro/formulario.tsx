@@ -14,14 +14,14 @@ export function FormularioRegistro({ callbackUrl }: { callbackUrl: string }) {
         type="text"
         placeholder="Nombre"
         required
-        className="rounded border p-2"
+        className="rounded-2xl border-2 border-line bg-surface p-3 text-ink placeholder:text-muted focus:border-accent focus:outline-none"
       />
       <input
         name="email"
         type="email"
         placeholder="Email"
         required
-        className="rounded border p-2"
+        className="rounded-2xl border-2 border-line bg-surface p-3 text-ink placeholder:text-muted focus:border-accent focus:outline-none"
       />
       <input
         name="password"
@@ -29,13 +29,13 @@ export function FormularioRegistro({ callbackUrl }: { callbackUrl: string }) {
         placeholder="Contraseña"
         required
         minLength={8}
-        className="rounded border p-2"
+        className="rounded-2xl border-2 border-line bg-surface p-3 text-ink placeholder:text-muted focus:border-accent focus:outline-none"
       />
-      {estado?.message && <p className="text-sm text-red-600">{estado.message}</p>}
+      {estado?.message && <p className="text-sm font-bold text-danger">{estado.message}</p>}
       <button
         type="submit"
         disabled={pendiente}
-        className="rounded bg-black p-2 text-white disabled:opacity-50"
+        className="rounded-2xl bg-accent p-3 font-display font-bold text-white shadow-pop-accent disabled:opacity-50"
       >
         Crear cuenta
       </button>

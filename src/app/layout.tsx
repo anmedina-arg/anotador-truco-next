@@ -1,7 +1,16 @@
 import './globals.css'
-import { Inter } from 'next/font/google'
+import { Baloo_2, Nunito } from 'next/font/google'
 
-const inter = Inter({ subsets: ['latin'] })
+const display = Baloo_2({
+  subsets: ['latin'],
+  weight: ['600', '700', '800'],
+  variable: '--font-display',
+})
+const sans = Nunito({
+  subsets: ['latin'],
+  weight: ['400', '600', '700', '800'],
+  variable: '--font-sans',
+})
 
 export const metadata = {
   title: 'Anotador de truco',
@@ -19,7 +28,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body className={inter.className}>
+      <body className={`${display.variable} ${sans.variable} bg-bg font-sans text-ink antialiased`}>
         {children}
       </body>
     </html>

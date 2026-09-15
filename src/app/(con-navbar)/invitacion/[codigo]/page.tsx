@@ -26,8 +26,8 @@ export default async function InvitacionPage({
     if (error instanceof CodigoInvitacionInvalidoError) {
       return (
         <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6 text-center">
-          <p>Este link de invitación no es válido — puede que ya no exista o el admin lo haya regenerado.</p>
-          <a href="/grupos" className="underline">
+          <p className="text-ink">Este link de invitación no es válido — puede que ya no exista o el admin lo haya regenerado.</p>
+          <a href="/grupos" className="font-bold text-accent no-underline hover:text-accent-dark">
             Ir a mis Grupos
           </a>
         </main>

@@ -28,11 +28,11 @@ export default async function NuevaPartidaPage({
   }
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-4 p-6">
-      <a href={`/grupos/${grupo.id}`} className="text-sm underline">
+    <main className="mx-auto flex max-w-md flex-col gap-5 p-6">
+      <a href={`/grupos/${grupo.id}`} className="text-sm font-bold text-accent no-underline hover:text-accent-dark">
         ← {grupo.nombre}
       </a>
-      <h1 className="text-2xl font-bold">Nueva Partida</h1>
+      <h1 className="font-display text-2xl font-bold text-ink">Nueva Partida</h1>
 
       <FormularioNuevaPartida grupoId={grupo.id} miembros={ordenarPorFrecuencia(miembros)} />
     </main>

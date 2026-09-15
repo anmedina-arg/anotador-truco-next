@@ -32,13 +32,13 @@ export default async function PartidaDetallePage({
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 p-6">
-      <a href={`/grupos/${grupoId}`} className="text-sm underline">
+      <a href={`/grupos/${grupoId}`} className="text-sm font-bold text-accent no-underline hover:text-accent-dark">
         ← Volver al Grupo
       </a>
 
       {partida.estado === "finalizada" && (
         <>
-          <p className="rounded border border-green-600 bg-green-50 p-3 text-sm text-green-800">
+          <p className="rounded-2xl border-2 border-success-border bg-success-soft p-3.5 text-sm font-bold text-success">
             Partida finalizada — ganó el Equipo {partida.equipoGanador} (
             {partida.equipoGanador === 1 ? nombresDeEquipo(partida.equipo1) : nombresDeEquipo(partida.equipo2)}
             ).
@@ -46,14 +46,14 @@ export default async function PartidaDetallePage({
           <BotonRevancha grupoId={grupoId} partidaId={partida.id} />
           <a
             href={`/grupos/${grupoId}/partidas/${partida.id}/siguiente-equipo`}
-            className="block rounded border p-2 text-center text-sm underline"
+            className="block rounded-2xl border-2 border-line bg-surface p-3 text-center text-sm font-display font-bold text-ink no-underline shadow-pop"
           >
             Siguiente equipo
           </a>
         </>
       )}
       {partida.estado === "cancelada" && (
-        <p className="rounded border border-gray-400 bg-gray-50 p-3 text-sm text-gray-600">
+        <p className="rounded-2xl border-2 border-line bg-surface p-3.5 text-sm font-bold text-muted">
           Partida cancelada.
         </p>
       )}
@@ -83,7 +83,7 @@ export default async function PartidaDetallePage({
           <input type="hidden" name="partidaId" value={partida.id} />
           <button
             type="submit"
-            className="w-full rounded border border-red-600 p-2 text-sm text-red-600"
+            className="w-full rounded-2xl border-2 border-danger-border bg-danger-soft p-3 text-sm font-display font-bold text-danger"
           >
             Cancelar Partida
           </button>
@@ -109,15 +109,24 @@ function Marcador({
   activo: boolean;
 }) {
   const malasOBuenas = puntos > CORTE_MALAS_BUENAS ? "buenas" : "malas";
+  const esBuenas = malasOBuenas === "buenas";
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-2">
-      <p className="text-center text-sm font-medium">{titulo}</p>
-      <p className="text-xs text-gray-500">{malasOBuenas}</p>
-      <p className="text-4xl font-bold">{puntos}</p>
+    <div className="flex flex-1 flex-col items-center gap-2 rounded-2xl border-2 border-line bg-surface p-4 shadow-pop">
+      <p className="text-center text-sm font-bold text-ink">{titulo}</p>
+      <p
+        className={`rounded-full px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white ${
+          esBuenas ? "bg-accent2" : "bg-muted"
+        }`}
+      >
+        {malasOBuenas}
+      </p>
+      <p className={`my-1 font-display text-5xl font-extrabold ${esBuenas ? "text-accent" : "text-ink"}`}>
+        {puntos}
+      </p>
       {activo && (
         <div className="flex gap-2">
-          <FormAnotar grupoId={grupoId} partidaId={partidaId} equipo={equipo} delta={-1} label="-" />
+          <FormAnotar grupoId={grupoId} partidaId={partidaId} equipo={equipo} delta={-1} label="−" />
           <FormAnotar grupoId={grupoId} partidaId={partidaId} equipo={equipo} delta={1} label="+" />
         </div>
       )}
@@ -138,13 +147,22 @@ function FormAnotar({
   delta: 1 | -1;
   label: string;
 }) {
+  const esSumar = delta === 1;
+
   return (
     <form action={anotarPuntoAction}>
       <input type="hidden" name="grupoId" value={grupoId} />
       <input type="hidden" name="partidaId" value={partidaId} />
       <input type="hidden" name="equipo" value={equipo} />
       <input type="hidden" name="delta" value={delta} />
-      <button type="submit" className="h-10 w-10 rounded border text-xl">
+      <button
+        type="submit"
+        className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl font-bold ${
+          esSumar
+            ? "bg-accent text-white shadow-pop-accent-sm"
+            : "border-2 border-line bg-surface text-ink shadow-pop-sm"
+        }`}
+      >
         {label}
       </button>
     </form>

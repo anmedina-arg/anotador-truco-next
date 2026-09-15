@@ -41,10 +41,13 @@ export default async function SiguienteEquipoPage({
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 p-6">
-      <a href={`/grupos/${grupoId}/partidas/${partidaId}`} className="text-sm underline">
+      <a
+        href={`/grupos/${grupoId}/partidas/${partidaId}`}
+        className="text-sm font-bold text-accent no-underline hover:text-accent-dark"
+      >
         ← Volver
       </a>
-      <h1 className="text-2xl font-bold">Siguiente equipo</h1>
+      <h1 className="font-display text-2xl font-bold text-ink">Siguiente equipo</h1>
 
       <FormularioSiguienteEquipo
         grupoId={grupoId}

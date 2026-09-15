@@ -11,12 +11,12 @@ export function BotonRevancha({ grupoId, partidaId }: { grupoId: string; partida
       <input type="hidden" name="grupoId" value={grupoId} />
       <input type="hidden" name="partidaId" value={partidaId} />
 
-      {estado?.message && <p className="text-sm text-red-600">{estado.message}</p>}
+      {estado?.message && <p className="text-sm font-bold text-danger">{estado.message}</p>}
 
       <button
         type="submit"
         disabled={pendiente}
-        className="w-full rounded border p-2 text-sm disabled:opacity-50"
+        className="w-full rounded-2xl bg-accent p-3 text-sm font-display font-bold text-white shadow-pop-accent disabled:opacity-50"
       >
         Revancha
       </button>

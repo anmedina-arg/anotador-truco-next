@@ -15,22 +15,22 @@ export function PerfilFlotante({
   return (
     <details className="fixed right-4 top-4 z-10">
       <summary
-        className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full border bg-white"
+        className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full bg-accent font-display font-bold text-white shadow-pop-accent-sm"
         aria-label="Mi perfil"
       >
         {inicial}
       </summary>
-      <div className="mt-2 flex w-44 flex-col gap-1 rounded border bg-white p-2 text-sm shadow-md">
-        <a href="/" className="rounded px-2 py-1 hover:bg-gray-100">
+      <div className="mt-2 flex w-44 flex-col gap-1 rounded-2xl border-2 border-line bg-surface p-2 text-sm font-bold shadow-pop">
+        <a href="/" className="rounded-xl px-2 py-1.5 text-ink no-underline hover:bg-accent-soft hover:text-accent">
           Inicio
         </a>
         {/* Ver mi perfil: contenido todavía sin definir — se agrega el link
             cuando esa pantalla exista, por ahora es solo un placeholder. */}
-        <span className="rounded px-2 py-1 text-gray-400">Ver mi perfil</span>
-        <a href="/grupos" className="rounded px-2 py-1 hover:bg-gray-100">
+        <span className="rounded-xl px-2 py-1.5 text-muted">Ver mi perfil</span>
+        <a href="/grupos" className="rounded-xl px-2 py-1.5 text-ink no-underline hover:bg-accent-soft hover:text-accent">
           Mis Grupos
         </a>
-        <a href="/grupos/nuevo" className="rounded px-2 py-1 hover:bg-gray-100">
+        <a href="/grupos/nuevo" className="rounded-xl px-2 py-1.5 text-ink no-underline hover:bg-accent-soft hover:text-accent">
           Crear Grupo
         </a>
         <form
@@ -39,7 +39,10 @@ export function PerfilFlotante({
             await signOut({ redirectTo: "/login" });
           }}
         >
-          <button type="submit" className="w-full rounded px-2 py-1 text-left hover:bg-gray-100">
+          <button
+            type="submit"
+            className="w-full rounded-xl px-2 py-1.5 text-left text-danger hover:bg-danger-soft"
+          >
             Salir
           </button>
         </form>

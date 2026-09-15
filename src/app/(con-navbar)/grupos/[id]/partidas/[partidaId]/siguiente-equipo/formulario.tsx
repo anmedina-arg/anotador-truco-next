@@ -43,26 +43,27 @@ export function FormularioSiguienteEquipo({
       <input type="hidden" name="partidaId" value={partidaId} />
 
       <div className="flex flex-col gap-1">
-        <h2 className="font-semibold">Equipo ganador (sigue)</h2>
-        <p className="text-sm text-gray-500">{nombresDeEquipo(equipoGanador)}</p>
+        <h2 className="font-display text-lg font-bold text-ink">Equipo ganador (sigue)</h2>
+        <p className="text-sm text-muted">{nombresDeEquipo(equipoGanador)}</p>
       </div>
 
       <div className="flex flex-col gap-2">
-        <h2 className="font-semibold">Elegí a los 3 desafiantes</h2>
-        <ul className="flex flex-col gap-2">
+        <h2 className="font-display text-lg font-bold text-ink">Elegí a los 3 desafiantes</h2>
+        <ul className="flex flex-col gap-2.5">
           {candidatos.map((candidato) => (
             <li
               key={candidato.participanteId}
-              className="flex items-center justify-between rounded border p-2"
+              className="flex items-center justify-between rounded-2xl border-2 border-line bg-surface p-3"
             >
-              <span>{nombreDeParticipante(candidato)}</span>
-              <label className="flex items-center gap-1 text-sm">
+              <span className="font-bold text-ink">{nombreDeParticipante(candidato)}</span>
+              <label className="flex items-center gap-1.5 text-sm font-bold text-muted">
                 <input
                   type="checkbox"
                   name="equipoDesafiante"
                   value={candidato.participanteId}
                   checked={seleccionados.includes(candidato.participanteId)}
                   onChange={() => alternar(candidato.participanteId)}
+                  className="accent-accent"
                 />
                 Desafiante
               </label>
@@ -73,9 +74,13 @@ export function FormularioSiguienteEquipo({
 
       {necesitaElegirAnotador && (
         <div className="flex flex-col gap-1">
-          <label className="flex flex-col gap-1 text-sm">
+          <label className="flex flex-col gap-1 text-sm font-bold text-ink">
             Vos ya no jugás esta Partida — ¿quién queda de Anotador?
-            <select name="nuevoAnotadorParticipanteId" className="rounded border p-2" required>
+            <select
+              name="nuevoAnotadorParticipanteId"
+              className="rounded-2xl border-2 border-line bg-surface p-3 font-bold text-ink focus:border-accent focus:outline-none"
+              required
+            >
               <option value="">Elegí a alguien</option>
               {candidatosAAnotador.map((candidato) => (
                 <option key={candidato.participanteId} value={candidato.participanteId}>
@@ -87,12 +92,12 @@ export function FormularioSiguienteEquipo({
         </div>
       )}
 
-      {estado?.message && <p className="text-sm text-red-600">{estado.message}</p>}
+      {estado?.message && <p className="text-sm font-bold text-danger">{estado.message}</p>}
 
       <button
         type="submit"
         disabled={pendiente}
-        className="rounded bg-black p-2 text-white disabled:opacity-50"
+        className="rounded-2xl bg-accent p-3 font-display font-bold text-white shadow-pop-accent disabled:opacity-50"
       >
         Confirmar Siguiente equipo
       </button>

@@ -11,21 +11,24 @@ export default async function LoginPage({
   const callbackUrl = callbackUrlSeguro(callbackUrlCrudo);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 p-6">
-      <h1 className="text-2xl font-bold">Iniciar sesión</h1>
+    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-5 p-6">
+      <h1 className="font-display text-3xl font-bold text-ink">Iniciar sesión</h1>
 
       <FormularioLogin callbackUrl={callbackUrl} />
 
       <form action={loguearConGoogleAction}>
         <input type="hidden" name="callbackUrl" value={callbackUrl} />
-        <button type="submit" className="w-full rounded border p-2">
+        <button
+          type="submit"
+          className="w-full rounded-2xl border-2 border-line bg-surface p-3 font-display font-bold text-ink shadow-pop"
+        >
           Continuar con Google
         </button>
       </form>
 
       <a
         href={`/registro?callbackUrl=${encodeURIComponent(callbackUrl)}`}
-        className="text-center text-sm underline"
+        className="text-center text-sm font-bold text-accent no-underline hover:text-accent-dark"
       >
         No tengo cuenta, crear una
       </a>
