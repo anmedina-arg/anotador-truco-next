@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import type { ParticipanteBasico } from "./participantes";
+import { nivelDeVictoria, calcularEstadisticasRanking } from "./grupos";
 import {
   usersTable,
   gruposParticipantesTable,
@@ -290,6 +291,8 @@ export async function obtenerPartidaConEquipos(partidaId: string) {
 // sale de [0, 30] — restar en 0 es un no-op, y llegar a 30 cierra sola la
 // Partida (estado, Equipo ganador y estadísticas de los 6 Participantes se
 // actualizan en la misma transacción, según lo decidido en el ticket #1).
+// El Nivel de Victoria (simple/doble/triple, ver CONTEXT.md) del cierre
+// sale del puntaje final del Equipo perdedor — ticket #16.
 export async function anotarPunto(input: {
   partidaId: string;
   solicitanteId: string;
@@ -362,6 +365,21 @@ export async function anotarPunto(input: {
       .filter((j) => j.equipoNumero !== input.equipo)
       .map((j) => j.participanteId);
 
+    // Nivel de Victoria (ver CONTEXT.md) según el puntaje final del Equipo
+    // perdedor, que no cambia en este cierre (solo se tocó la columna del
+    // Equipo ganador arriba). El peso en puntos de una sola Victoria de este
+    // nivel sale de calcularEstadisticasRanking (ticket #15) pidiéndole el
+    // resultado de "1 Partida jugada y ganada, con este nivel" — así no se
+    // duplica la fórmula acá.
+    const puntajeDelPerdedor = input.equipo === 1 ? partida.equipo2Puntos : partida.equipo1Puntos;
+    const nivel = nivelDeVictoria(puntajeDelPerdedor);
+    const { puntos: puntosPorEstaVictoria } = calcularEstadisticasRanking({
+      partidasJugadas: 1,
+      partidasGanadas: 1,
+      partidasGanadasDobles: nivel === "doble" ? 1 : 0,
+      partidasGanadasTriples: nivel === "triple" ? 1 : 0,
+    });
+
     // Ganadores y perdedores son conjuntos disjuntos (particionados del mismo
     // `jugadores`) — no hay fila que ambos updates puedan pisarse, así que
     // corren en paralelo, igual que crearPartida hace con su propio trabajo
@@ -371,9 +389,15 @@ export async function anotarPunto(input: {
         ? tx
             .update(gruposParticipantesTable)
             .set({
-              puntos: sql`${gruposParticipantesTable.puntos} + 1`,
+              puntos: sql`${gruposParticipantesTable.puntos} + ${puntosPorEstaVictoria}`,
               partidasJugadas: sql`${gruposParticipantesTable.partidasJugadas} + 1`,
               partidasGanadas: sql`${gruposParticipantesTable.partidasGanadas} + 1`,
+              ...(nivel === "doble" && {
+                partidasGanadasDobles: sql`${gruposParticipantesTable.partidasGanadasDobles} + 1`,
+              }),
+              ...(nivel === "triple" && {
+                partidasGanadasTriples: sql`${gruposParticipantesTable.partidasGanadasTriples} + 1`,
+              }),
             })
             .where(
               and(

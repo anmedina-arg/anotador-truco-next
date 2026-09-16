@@ -616,14 +616,20 @@ describe("anotarPunto", () => {
   });
 
   // Llegar a 30 anotando de a uno tomaría 30 round-trips a la base de test
-  // (supera el timeout de vitest por test) — se siembra el marcador en 29
+  // (supera el timeout de vitest por test) — se siembra el marcador
   // directo por DB, igual que el resto de la suite ya hace para arrancar en
   // un estado puntual (ver "no devuelve Partidas canceladas" más arriba), y
-  // se prueba solo la transición 29 → 30 que es lo que importa acá.
-  async function sembrarEquipo1En29(partidaId: string) {
+  // se prueba solo la transición final que es lo que importa acá.
+  // equipo2Puntos elige el nivel de Victoria: 0 → triple, 1-15 → doble,
+  // 16-29 → simple (ver CONTEXT.md).
+  async function sembrarPuntos(partidaId: string, equipo2Puntos: number) {
     const db = getDb();
-    await db.update(partidasTable).set({ equipo1Puntos: 29 }).where(eq(partidasTable.id, partidaId));
+    await db
+      .update(partidasTable)
+      .set({ equipo1Puntos: 29, equipo2Puntos })
+      .where(eq(partidasTable.id, partidaId));
   }
+  const sembrarEquipo1En29 = (partidaId: string) => sembrarPuntos(partidaId, 0);
 
   it("al llegar a 30 cierra la Partida como finalizada y registra el Equipo ganador", async () => {
     const [p0] = participanteIds;
@@ -649,23 +655,26 @@ describe("anotarPunto", () => {
     ).rejects.toThrow("La Partida no está en curso");
   });
 
-  it("al llegar a 30 actualiza las estadísticas de los 6 Participantes en la misma operación", async () => {
-    const [p0, p1, p2, p3, p4, p5] = participanteIds;
-    const partida = await crearPartidaDePrueba();
-    await sembrarEquipo1En29(partida.id);
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
-
+  async function estadisticasPorParticipante() {
     const db = getDb();
     const stats = await db
       .select()
       .from(gruposParticipantesTable)
       .where(eq(gruposParticipantesTable.grupoId, grupoId));
 
-    const porId = new Map(stats.map((s) => [s.participanteId, s]));
+    return new Map(stats.map((s) => [s.participanteId, s]));
+  }
+
+  it("al llegar a 30 actualiza las estadísticas de los 6 Participantes en la misma operación", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarEquipo1En29(partida.id);
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    const porId = await estadisticasPorParticipante();
 
     for (const ganadorId of [p0, p1, p2]) {
       const s = porId.get(ganadorId)!;
-      expect(s.puntos).toBe(1);
       expect(s.partidasJugadas).toBe(1);
       expect(s.partidasGanadas).toBe(1);
       expect(s.partidasPerdidas).toBe(0);
@@ -676,7 +685,60 @@ describe("anotarPunto", () => {
       expect(s.puntos).toBe(0);
       expect(s.partidasJugadas).toBe(1);
       expect(s.partidasGanadas).toBe(0);
+      expect(s.partidasGanadasDobles).toBe(0);
+      expect(s.partidasGanadasTriples).toBe(0);
       expect(s.partidasPerdidas).toBe(1);
+    }
+  });
+
+  it("Victoria triple (perdedor en 0): 3 puntos y partidasGanadasTriples+1", async () => {
+    const [p0, p1, p2] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarPuntos(partida.id, 0);
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    const porId = await estadisticasPorParticipante();
+
+    for (const ganadorId of [p0, p1, p2]) {
+      const s = porId.get(ganadorId)!;
+      expect(s.puntos).toBe(3);
+      expect(s.partidasGanadas).toBe(1);
+      expect(s.partidasGanadasDobles).toBe(0);
+      expect(s.partidasGanadasTriples).toBe(1);
+    }
+  });
+
+  it("Victoria doble (perdedor en 1-15): 2 puntos y partidasGanadasDobles+1", async () => {
+    const [p0, p1, p2] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarPuntos(partida.id, 10);
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    const porId = await estadisticasPorParticipante();
+
+    for (const ganadorId of [p0, p1, p2]) {
+      const s = porId.get(ganadorId)!;
+      expect(s.puntos).toBe(2);
+      expect(s.partidasGanadas).toBe(1);
+      expect(s.partidasGanadasDobles).toBe(1);
+      expect(s.partidasGanadasTriples).toBe(0);
+    }
+  });
+
+  it("Victoria simple (perdedor en 16-29): 1 punto, sin dobles ni triples", async () => {
+    const [p0, p1, p2] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarPuntos(partida.id, 20);
+    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    const porId = await estadisticasPorParticipante();
+
+    for (const ganadorId of [p0, p1, p2]) {
+      const s = porId.get(ganadorId)!;
+      expect(s.puntos).toBe(1);
+      expect(s.partidasGanadas).toBe(1);
+      expect(s.partidasGanadasDobles).toBe(0);
+      expect(s.partidasGanadasTriples).toBe(0);
     }
   });
 });

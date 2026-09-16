@@ -220,11 +220,11 @@ export function nivelDeVictoria(puntajeFinalDelPerdedor: number): "simple" | "do
 }
 
 // Único lugar que calcula puntos/partidasPerdidas de un grupo_participante
-// (ver CONTEXT.md, Ranking) — tanto anotarPunto (cierre de Partida en vivo,
-// ticket #16) como actualizarEstadisticas (corrección manual del admin,
-// ticket #17) tienen que pasar por acá al escribir esos dos campos, para no
-// duplicar la fórmula (todavía no lo hacen — este ticket #15 solo deja la
-// función lista). Simples quedan implícitas (ganadas - dobles - triples):
+// (ver CONTEXT.md, Ranking). anotarPunto (cierre de Partida en vivo, ticket
+// #16) ya pasa por acá — le pide "1 Partida jugada y ganada con este Nivel"
+// para obtener el peso de una sola Victoria, sin duplicar la fórmula.
+// actualizarEstadisticas (corrección manual del admin, ticket #17)
+// todavía no. Simples quedan implícitas (ganadas - dobles - triples):
 // puntos = simples×1 + dobles×2 + triples×3, que se simplifica a
 // ganadas + dobles + 2×triples. No valida que dobles+triples <= ganadas —
 // esa validación es responsabilidad del caller (ver actualizarEstadisticas).
