@@ -70,6 +70,12 @@ export const authSchema = {
 // Grupo (ver CONTEXT.md): conjunto de Participantes sobre el que se juegan
 // Partidas. codigoInvitacion se genera ya en la creación (ticket #3) aunque
 // recién se muestra/gestiona en el ticket #4, para no migrar la tabla de nuevo.
+// umbralInicioPicaPica/umbralFinPicaPica/ventanaInactividadSegundos (ver
+// CONTEXT.md, Fase) arrancan en sus defaults 5/20/10 para todo Grupo,
+// existente o nuevo, por default de columna — sin backfill aparte (ver ADR
+// 0004). Los dos umbrales se fijan solo al crear el Grupo, sin operación de
+// actualización expuesta; ventanaInactividadSegundos sí es editable después
+// (ticket #23) y se lee en vivo desde acá, nunca se copia a la Partida.
 export const gruposTable = pgTable("grupo", {
   id: text("id")
     .primaryKey()
@@ -84,6 +90,9 @@ export const gruposTable = pgTable("grupo", {
     .references(() => usersTable.id, { onDelete: "restrict" }),
   codigoInvitacion: text("codigoInvitacion").notNull().unique(),
   creadoEn: timestamp("creadoEn", { mode: "date" }).notNull().defaultNow(),
+  umbralInicioPicaPica: integer("umbralInicioPicaPica").notNull().default(5),
+  umbralFinPicaPica: integer("umbralFinPicaPica").notNull().default(20),
+  ventanaInactividadSegundos: integer("ventanaInactividadSegundos").notNull().default(10),
 });
 
 // grupo_participante (ver CONTEXT.md): membresía de un Participante en un
@@ -123,6 +132,17 @@ export const estadoPartidaEnum = pgEnum("estado_partida", [
   "cancelada",
 ]);
 
+// Bloque (ver CONTEXT.md): tramo de la Partida vigente, Ronda o Pica-pica.
+// tipoDeBloqueActual arranca en "ronda" por default de columna — así toda
+// Partida nueva (incluidas Revancha y Siguiente equipo, que solo llaman a
+// crearPartida) arranca en Ronda sin ningún caso especial en el código.
+// manosJugadasEnBloqueActual solo es relevante durante un Bloque de
+// Pica-pica (0/1/2 antes de completar sus 3 Manos); en Ronda vale 0 y se
+// ignora. ultimoPuntoAnotadoEn (nullable, ningún punto anotado todavía)
+// sostiene la ventana de inactividad que detecta el fin de una Mano (ver
+// ADR 0003) — no se puede derivar del puntaje acumulado solo.
+export const tipoDeBloqueEnum = pgEnum("tipo_de_bloque", ["ronda", "pica_pica"]);
+
 export const partidasTable = pgTable(
   "partida",
   {
@@ -143,6 +163,9 @@ export const partidasTable = pgTable(
     equipoGanador: integer("equipoGanador"),
     fechaInicio: timestamp("fechaInicio", { mode: "date" }).notNull().defaultNow(),
     fechaFin: timestamp("fechaFin", { mode: "date" }),
+    tipoDeBloqueActual: tipoDeBloqueEnum("tipoDeBloqueActual").notNull().default("ronda"),
+    manosJugadasEnBloqueActual: integer("manosJugadasEnBloqueActual").notNull().default(0),
+    ultimoPuntoAnotadoEn: timestamp("ultimoPuntoAnotadoEn", { mode: "date" }),
   },
   (partida) => [
     check("equipo1_puntos_rango", sql`${partida.equipo1Puntos} BETWEEN 0 AND 30`),

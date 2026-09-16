@@ -16,6 +16,13 @@ manualmente). Cualquier Participante registrado puede crear un Grupo nuevo;
 al crearlo queda como su **admin**, con permisos que el resto de los
 miembros no tiene (generar/invalidar la invitación, sacar miembros del
 Grupo) — separado del rol de Anotador, que es por Partida, no por Grupo.
+Un Grupo también fija las reglas de la modalidad Pica-pica (ver Fase) para
+todas sus Partidas: los umbrales de inicio y fin de la Fase alternada
+(default 5 y 20) se definen una sola vez al crear el Grupo y no se pueden
+editar después; la ventana de inactividad que detecta el fin de una Mano
+(ver Mano, default 10 segundos) sí es editable por el admin en cualquier
+momento y se aplica de inmediato a todas las Partidas del Grupo, incluidas
+las que están en curso.
 
 **Participante**:
 Miembro de un Grupo, con cuenta propia (login por email+contraseña o Google).
@@ -55,7 +62,50 @@ para el Ranking ni el dashboard.
 **Mano**:
 Una jugada dentro de una Partida. Siempre otorga al menos 1 punto a
 exactamente uno de los dos Equipos — no existe la Mano que termine 0 a 0
-(parda). Esos puntos alimentan el contador de la Partida.
+(parda), pero puede otorgar más de 1 si hace falta. El fin de una Mano se
+detecta por tiempo, no por una acción explícita: el primer punto anotado
+después de que pasó la ventana de inactividad del Grupo (ver Grupo) sin
+ningún punto nuevo marca el inicio de la Mano siguiente; cualquier punto
+anotado dentro de esa ventana pertenece a la misma Mano que se venía
+cargando. Corregir un puntaje ya cargado (deshacer un punto de más, o uno
+anotado al Equipo equivocado) no tiene ningún otro efecto de dominio — en
+particular, nunca cambia el tipo de Bloque (ver Bloque) por sí solo.
+
+**Bloque**:
+Tramo de una Partida formado por una o varias Manos consecutivas del mismo
+tipo: Ronda o Pica-pica (ver esos términos). El tipo de Bloque decide cómo
+se juegan sus Manos en la mesa, pero no cambia cómo se anotan los
+puntos — en cualquier tipo de Bloque, los puntos siempre se anotan para el
+Equipo, nunca para un Participante individual. Si una corrección de
+puntaje deja mal el tipo de Bloque vigente (por ejemplo, dos puntos de una
+misma Mano real quedaron separados por más de la ventana de inactividad y
+se contaron de más), el Anotador puede corregirlo a mano; si lo corrige a
+Pica-pica, ese Bloque arranca de cero sus 3 Manos.
+
+**Ronda**:
+Tipo de Bloque de exactamente 1 Mano, jugada entre los 6 Participantes de
+la Partida. Es el único tipo de Bloque que existe en la Fase inicial y en
+la Fase final de una Partida (ver Fase) — ver también Pica-pica.
+
+**Pica-pica**:
+Tipo de Bloque de exactamente 3 Manos consecutivas, cada una jugada 1
+contra 1 entre un Participante de cada Equipo (los 3 integrantes de un
+Equipo se enfrentan, por turno, a los 3 del otro) — a diferencia de la
+Ronda, no juegan los 6 Participantes juntos. Solo aparece durante la Fase
+alternada de una Partida (ver Fase).
+_Avoid_: mini-partida (se confunde con Partida, que es otro concepto).
+
+**Fase**:
+Etapa de una Partida que determina qué tipo de Bloque corresponde jugar.
+Toda Partida atraviesa hasta 3, en este orden: **Fase inicial** (todo en
+Ronda, desde 0-0 hasta que algún Equipo alcanza o supera el umbral de
+inicio de Pica-pica del Grupo, default 5 — una Mano que deja a un Equipo en
+6 ya lo superó, no hace falta caer justo en 5); **Fase alternada** (alterna
+un Bloque de Ronda y uno de Pica-pica, hasta que algún Equipo alcanza o
+supera el umbral de fin de Pica-pica del Grupo, default 20 — si ese umbral
+se cruza a mitad de un Bloque de Pica-pica, se terminan de jugar sus 3
+Manos antes de pasar de Fase); y **Fase final** (todo en Ronda otra vez,
+hasta que la Partida termina en 30).
 
 **Malas / Buenas**:
 Las dos mitades del contador de una Partida: los primeros 15 puntos (0-15)

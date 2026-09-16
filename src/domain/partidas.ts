@@ -4,12 +4,54 @@ import type { ParticipanteBasico } from "./participantes";
 import { nivelDeVictoria, calcularEstadisticasRanking } from "./grupos";
 import {
   usersTable,
+  gruposTable,
   gruposParticipantesTable,
   partidasTable,
   partidasParticipantesTable,
 } from "../db/schema";
 
 const PUNTOS_PARA_GANAR = 30;
+
+export type TipoDeBloque = "ronda" | "pica_pica";
+
+const MANOS_POR_BLOQUE_PICA_PICA = 3;
+
+// Máquina de estados del Bloque (ver CONTEXT.md: Bloque, Ronda, Pica-pica,
+// Fase; ADR 0003). Pura, sin acceso a base ni a reloj: dado el Bloque
+// vigente, los umbrales del Grupo y el puntaje de ambos Equipos *antes* de
+// la Mano que se está por jugar, devuelve el Bloque que le corresponde.
+// Única fuente de verdad de esta lógica — tanto anotarPunto como la
+// corrección manual del Bloque (ticket #21) la usan, para no duplicar las
+// reglas de Fase en dos lugares.
+export function calcularBloqueSiguiente(input: {
+  tipoActual: TipoDeBloque;
+  manosJugadas: number;
+  umbralInicio: number;
+  umbralFin: number;
+  equipo1Puntos: number;
+  equipo2Puntos: number;
+}): { tipo: TipoDeBloque; manosJugadas: number } {
+  const bloqueEstaCompleto =
+    input.tipoActual === "ronda" ||
+    (input.tipoActual === "pica_pica" && input.manosJugadas >= MANOS_POR_BLOQUE_PICA_PICA);
+
+  if (!bloqueEstaCompleto) {
+    // Seguimos en el mismo Bloque de Pica-pica ya empezado — no se reevalúa
+    // la Fase a mitad de camino (ver historia de usuario 8 del ticket #19).
+    return { tipo: "pica_pica", manosJugadas: input.manosJugadas + 1 };
+  }
+
+  const max = Math.max(input.equipo1Puntos, input.equipo2Puntos);
+  if (max < input.umbralInicio) return { tipo: "ronda", manosJugadas: 0 }; // Fase inicial
+  if (max >= input.umbralFin) return { tipo: "ronda", manosJugadas: 0 }; // Fase final
+
+  // Fase alternada: el Bloque nuevo es el tipo opuesto al que se acaba de
+  // completar.
+  return {
+    tipo: input.tipoActual === "ronda" ? "pica_pica" : "ronda",
+    manosJugadas: 0,
+  };
+}
 
 // El Anotador es quien creó la Partida (ver CONTEXT.md) — un solo lugar
 // para esta comparación, usado tanto para autorizar (anotarPunto,
@@ -330,10 +372,53 @@ export async function anotarPunto(input: {
     const columnaPuntos =
       input.equipo === 1 ? { equipo1Puntos: nuevoValor } : { equipo2Puntos: nuevoValor };
 
+    // Bloque (ver CONTEXT.md / ADR 0003): una corrección de puntaje
+    // (delta: -1) no toca nada de esto bajo ninguna circunstancia — nunca
+    // dispara el recálculo ni actualiza ultimoPuntoAnotadoEn, para que
+    // corregir un error de carga no genere un segundo error en el tipo de
+    // Bloque (ver historia de usuario 5 del ticket #19).
+    let columnaBloque: { tipoDeBloqueActual: TipoDeBloque; manosJugadasEnBloqueActual: number } | undefined;
+    let columnaUltimoPunto: { ultimoPuntoAnotadoEn: Date } | undefined;
+
+    if (input.delta === 1) {
+      const ahora = new Date();
+      columnaUltimoPunto = { ultimoPuntoAnotadoEn: ahora };
+
+      const [grupo] = await tx
+        .select({
+          umbralInicioPicaPica: gruposTable.umbralInicioPicaPica,
+          umbralFinPicaPica: gruposTable.umbralFinPicaPica,
+          ventanaInactividadSegundos: gruposTable.ventanaInactividadSegundos,
+        })
+        .from(gruposTable)
+        .where(eq(gruposTable.id, partida.grupoId));
+
+      const ventanaMs = grupo.ventanaInactividadSegundos * 1000;
+      const esManoNueva =
+        partida.ultimoPuntoAnotadoEn === null ||
+        ahora.getTime() - partida.ultimoPuntoAnotadoEn.getTime() > ventanaMs;
+
+      if (esManoNueva) {
+        const bloque = calcularBloqueSiguiente({
+          tipoActual: partida.tipoDeBloqueActual,
+          manosJugadas: partida.manosJugadasEnBloqueActual,
+          umbralInicio: grupo.umbralInicioPicaPica,
+          umbralFin: grupo.umbralFinPicaPica,
+          // Puntaje de ambos Equipos antes de aplicar este punto.
+          equipo1Puntos: partida.equipo1Puntos,
+          equipo2Puntos: partida.equipo2Puntos,
+        });
+        columnaBloque = {
+          tipoDeBloqueActual: bloque.tipo,
+          manosJugadasEnBloqueActual: bloque.manosJugadas,
+        };
+      }
+    }
+
     if (nuevoValor < PUNTOS_PARA_GANAR) {
       const [actualizada] = await tx
         .update(partidasTable)
-        .set(columnaPuntos)
+        .set({ ...columnaPuntos, ...columnaBloque, ...columnaUltimoPunto })
         .where(eq(partidasTable.id, input.partidaId))
         .returning();
       return actualizada;
@@ -343,6 +428,8 @@ export async function anotarPunto(input: {
       .update(partidasTable)
       .set({
         ...columnaPuntos,
+        ...columnaBloque,
+        ...columnaUltimoPunto,
         estado: "finalizada",
         equipoGanador: input.equipo,
         fechaFin: new Date(),

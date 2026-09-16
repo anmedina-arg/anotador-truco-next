@@ -1,12 +1,20 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { obtenerPartidaConEquipos, esAnotadorDePartida } from "@/domain/partidas";
+import { obtenerPartidaConEquipos, esAnotadorDePartida, type TipoDeBloque } from "@/domain/partidas";
 import { nombresDeEquipo, inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
 import { anotarPuntoAction, cancelarPartidaAction } from "./actions";
 import { BotonRevancha } from "./boton-revancha";
 import { FosforosTally } from "@/components/fosforos-tally";
 
 const CORTE_MALAS_BUENAS = 15;
+
+// Bloque (ver CONTEXT.md): tipo de la Mano que corresponde jugar a
+// continuación, calculado server-side en cada render — sin timer ni
+// polling en el cliente (ver ticket #20).
+const NOMBRE_DE_BLOQUE: Record<TipoDeBloque, string> = {
+  ronda: "Ronda",
+  pica_pica: "Pica-pica",
+};
 
 // Mismo rótulo/color que la selección de equipos en Nueva Partida — ver
 // formulario.tsx: Equipo 1 siempre es "Nosotros" (accent), Equipo 2 siempre
@@ -67,6 +75,15 @@ export default async function PartidaDetallePage({
       {partida.estado === "cancelada" && (
         <p className="shrink-0 rounded-2xl border-2 border-line bg-surface p-3.5 text-sm font-bold text-muted">
           Partida cancelada.
+        </p>
+      )}
+
+      {partida.estado === "en_curso" && (
+        <p className="shrink-0 text-center text-sm font-display font-bold text-ink">
+          Mano actual:{" "}
+          <span className={partida.tipoDeBloqueActual === "pica_pica" ? "text-accent2" : "text-accent"}>
+            {NOMBRE_DE_BLOQUE[partida.tipoDeBloqueActual]}
+          </span>
         </p>
       )}
 
