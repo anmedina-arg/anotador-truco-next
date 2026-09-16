@@ -60,16 +60,23 @@ formar nuevos Equipos, pero no cuenta como Partida jugada, ganada ni perdida
 para el Ranking ni el dashboard.
 
 **Mano**:
-Una jugada dentro de una Partida. Siempre otorga al menos 1 punto a
-exactamente uno de los dos Equipos — no existe la Mano que termine 0 a 0
-(parda), pero puede otorgar más de 1 si hace falta. El fin de una Mano se
-detecta por tiempo, no por una acción explícita: el primer punto anotado
-después de que pasó la ventana de inactividad del Grupo (ver Grupo) sin
-ningún punto nuevo marca el inicio de la Mano siguiente; cualquier punto
-anotado dentro de esa ventana pertenece a la misma Mano que se venía
-cargando. Corregir un puntaje ya cargado (deshacer un punto de más, o uno
-anotado al Equipo equivocado) no tiene ningún otro efecto de dominio — en
-particular, nunca cambia el tipo de Bloque (ver Bloque) por sí solo.
+Una jugada dentro de una Partida, ya resuelta con las cartas sobre la mesa
+antes de que el Anotador empiece a cargarla. Siempre otorga al menos 1
+punto, a uno o a ambos Equipos (ej. Envido y Truco de la misma Mano
+resueltos para Equipos distintos) — no existe la Mano que termine 0 a 0
+(parda), pero puede otorgar más de 1 punto por Equipo si hace falta. El fin
+de una Mano se detecta por tiempo, no por una acción explícita: mientras el
+Anotador sigue tocando "+" (para cualquiera de los dos Equipos), esos
+toques se acumulan sin confirmarse todavía; recién cuando pasa la ventana
+de inactividad del Grupo (ver Grupo) sin ningún toque nuevo, la app da esa
+Mano por confirmada y carga su resultado — es en ese momento, no antes, que
+se recalcula el tipo de Bloque (ver Bloque) vigente. Corregir un puntaje ya
+confirmado (deshacer un punto de más, o uno anotado al Equipo equivocado)
+no tiene ningún otro efecto de dominio — en particular, nunca cambia el
+tipo de Bloque por sí solo. Distinto es cancelar un toque de "+" que
+todavía no se confirmó (el Anotador se equivocó de Equipo y corrige antes
+de que pase la ventana): no llega a existir como punto cargado, así que no
+hay nada que corregir después.
 
 **Bloque**:
 Tramo de una Partida formado por una o varias Manos consecutivas del mismo

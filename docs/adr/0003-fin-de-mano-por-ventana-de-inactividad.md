@@ -1,4 +1,17 @@
+---
+status: superseded by ADR-0005
+---
+
 # Detectar el fin de una Mano por ventana de inactividad, no por una acción explícita
+
+> **Superseded por [ADR-0005](./0005-fin-de-mano-decidido-por-debounce-del-cliente.md).**
+> La detección retroactiva server-side descrita acá (comparar el timestamp
+> del punto nuevo contra el último guardado) se reemplazó por un debounce
+> del lado del cliente: en uso real, dejaba el Bloque mostrado en pantalla
+> atrasado hasta que llegaba el primer punto de la Mano siguiente. La
+> decisión de fondo de este ADR (detectar por tiempo, no por una acción
+> explícita tipo "Cerrar mano") sigue en pie — lo que cambia es *dónde* se
+> mide esa ventana.
 
 Para la modalidad Pica-pica (ver `CONTEXT.md`: Bloque, Ronda, Pica-pica, Fase)
 la app necesita saber cuándo termina cada Mano, porque la alternancia

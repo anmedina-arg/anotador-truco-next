@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { obtenerPartidaConEquipos, esAnotadorDePartida, type TipoDeBloque } from "@/domain/partidas";
+import { obtenerGrupoPorId } from "@/domain/grupos";
 import { nombresDeEquipo, inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
-import { anotarPuntoAction, cancelarPartidaAction } from "./actions";
+import { cancelarPartidaAction } from "./actions";
 import { BotonRevancha } from "./boton-revancha";
+import { MarcadorEnVivo } from "./marcador-en-vivo";
 import { FosforosTally } from "@/components/fosforos-tally";
 
 const CORTE_MALAS_BUENAS = 15;
@@ -47,6 +49,11 @@ export default async function PartidaDetallePage({
     notFound();
   }
 
+  // ventanaInactividadSegundos (ver CONTEXT.md/Grupo) se lee en vivo acá,
+  // en cada render server-side — un cambio del admin aplica a la próxima
+  // vez que se carga esta pantalla, sin polling (ver ADR 0005).
+  const grupo = partida.estado === "en_curso" ? await obtenerGrupoPorId(grupoId) : null;
+
   return (
     <main className="mx-auto flex h-[100dvh] max-w-md flex-col gap-4 p-6">
       <a
@@ -87,24 +94,20 @@ export default async function PartidaDetallePage({
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1 justify-around gap-4">
-        <Marcador
-          miembros={partida.equipo1}
-          puntos={partida.equipo1Puntos}
-          equipo={1}
-          grupoId={grupoId}
+      {partida.estado === "en_curso" && grupo ? (
+        <MarcadorEnVivo
           partidaId={partida.id}
-          activo={partida.estado === "en_curso"}
-        />
-        <Marcador
-          miembros={partida.equipo2}
-          puntos={partida.equipo2Puntos}
-          equipo={2}
           grupoId={grupoId}
-          partidaId={partida.id}
-          activo={partida.estado === "en_curso"}
+          ventanaInactividadSegundos={grupo.ventanaInactividadSegundos}
+          equipo1={{ miembros: partida.equipo1, puntosConfirmados: partida.equipo1Puntos }}
+          equipo2={{ miembros: partida.equipo2, puntosConfirmados: partida.equipo2Puntos }}
         />
-      </div>
+      ) : (
+        <div className="flex min-h-0 flex-1 justify-around gap-4">
+          <MarcadorFinal miembros={partida.equipo1} puntos={partida.equipo1Puntos} equipo={1} />
+          <MarcadorFinal miembros={partida.equipo2} puntos={partida.equipo2Puntos} equipo={2} />
+        </div>
+      )}
 
       {partida.estado === "en_curso" && (
         <form action={cancelarPartidaAction} className="shrink-0">
@@ -122,20 +125,17 @@ export default async function PartidaDetallePage({
   );
 }
 
-function Marcador({
+// Marcador de solo lectura para una Partida finalizada/cancelada — sin
+// botones de "+"/"-" (ver MarcadorEnVivo para el tanteador interactivo de
+// una Partida en_curso, con su propio debounce).
+function MarcadorFinal({
   miembros,
   puntos,
   equipo,
-  grupoId,
-  partidaId,
-  activo,
 }: {
   miembros: ParticipanteBasico[];
   puntos: number;
   equipo: 1 | 2;
-  grupoId: string;
-  partidaId: string;
-  activo: boolean;
 }) {
   const malasOBuenas = puntos > CORTE_MALAS_BUENAS ? "buenas" : "malas";
   const esBuenas = malasOBuenas === "buenas";
@@ -174,47 +174,6 @@ function Marcador({
       <div className="flex min-h-0 flex-1 flex-col items-center">
         <FosforosTally puntos={puntosDeLaFase} colorClase={esBuenas ? "bg-accent2" : "bg-ink"} />
       </div>
-      {activo && (
-        <div className="flex shrink-0 gap-2">
-          <FormAnotar grupoId={grupoId} partidaId={partidaId} equipo={equipo} delta={-1} label="−" />
-          <FormAnotar grupoId={grupoId} partidaId={partidaId} equipo={equipo} delta={1} label="+" />
-        </div>
-      )}
     </div>
-  );
-}
-
-function FormAnotar({
-  grupoId,
-  partidaId,
-  equipo,
-  delta,
-  label,
-}: {
-  grupoId: string;
-  partidaId: string;
-  equipo: 1 | 2;
-  delta: 1 | -1;
-  label: string;
-}) {
-  const esSumar = delta === 1;
-
-  return (
-    <form action={anotarPuntoAction}>
-      <input type="hidden" name="grupoId" value={grupoId} />
-      <input type="hidden" name="partidaId" value={partidaId} />
-      <input type="hidden" name="equipo" value={equipo} />
-      <input type="hidden" name="delta" value={delta} />
-      <button
-        type="submit"
-        className={`flex h-10 w-10 items-center justify-center rounded-xl text-xl font-bold ${
-          esSumar
-            ? "bg-accent text-white shadow-pop-accent-sm"
-            : "border-2 border-line bg-surface text-ink shadow-pop-sm"
-        }`}
-      >
-        {label}
-      </button>
-    </form>
   );
 }

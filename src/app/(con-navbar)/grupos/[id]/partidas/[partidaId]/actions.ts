@@ -3,35 +3,40 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
-import { anotarPunto, cancelarPartida, crearRevancha, crearSiguienteEquipo } from "@/domain/partidas";
+import {
+  anotarPunto,
+  cargarResultadoDeMano,
+  cancelarPartida,
+  crearRevancha,
+  crearSiguienteEquipo,
+} from "@/domain/partidas";
 
-function equipoValido(valor: FormDataEntryValue | null): 1 | 2 {
-  const n = Number(valor);
-  if (n !== 1 && n !== 2) {
+// Una Server Action se puede invocar con un POST directo, sin pasar por el
+// tipado de TypeScript del lado del cliente — validar en runtime igual que
+// antes hacía equipoValido() con el FormData.
+function equipoValido(valor: unknown): 1 | 2 {
+  if (valor !== 1 && valor !== 2) {
     throw new Error("Equipo inválido");
   }
-  return n;
+  return valor;
 }
 
-function deltaValido(valor: FormDataEntryValue | null): 1 | -1 {
-  const n = Number(valor);
-  if (n !== 1 && n !== -1) {
-    throw new Error("Delta inválido");
-  }
-  return n;
-}
-
-export async function anotarPuntoAction(formData: FormData) {
+// Corrige un punto ya confirmado de una Mano anterior (ver CONTEXT.md/Mano,
+// ADR 0005) — se llama directo desde el componente cliente del tanteador
+// (ver marcador-en-vivo.tsx), no por un <form>, así que recibe argumentos
+// planos en vez de FormData.
+export async function corregirPuntoAction(input: { grupoId: string; partidaId: string; equipo: 1 | 2 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-
-  const grupoId = String(formData.get("grupoId") ?? "");
-  const partidaId = String(formData.get("partidaId") ?? "");
-  const equipo = equipoValido(formData.get("equipo"));
-  const delta = deltaValido(formData.get("delta"));
+  const equipo = equipoValido(input.equipo);
 
   try {
-    await anotarPunto({ partidaId, solicitanteId: session.user.id, equipo, delta });
+    await anotarPunto({
+      partidaId: input.partidaId,
+      solicitanteId: session.user.id,
+      equipo,
+      delta: -1,
+    });
   } catch (error) {
     // Doble click, pestaña vieja u otra sesión llegó primero: la Partida ya
     // no está en el estado que el botón asumía (ya se cerró, ya se canceló).
@@ -39,8 +44,44 @@ export async function anotarPuntoAction(formData: FormData) {
     if (!(error instanceof Error)) throw error;
   }
 
-  revalidatePath(`/grupos/${grupoId}/partidas/${partidaId}`);
-  revalidatePath(`/grupos/${grupoId}`);
+  revalidatePath(`/grupos/${input.grupoId}/partidas/${input.partidaId}`);
+  revalidatePath(`/grupos/${input.grupoId}`);
+}
+
+export type ResultadoCargarMano = { ok: true } | { ok: false; message: string };
+
+// Carga el resultado de una Mano completa (ver CONTEXT.md/Mano, ADR 0005) —
+// el debounce del cliente ya decidió que la Mano terminó antes de llamar
+// esto. A diferencia del resto de las acciones de este archivo, esta
+// devuelve un resultado explícito: el cliente necesita distinguir un
+// rechazo de dominio limpio (no reintentar, ej. "no sos el Anotador") de
+// una falla de red real (reintentar con backoff) — ver marcador-en-vivo.tsx.
+export async function cargarResultadoDeManoAction(input: {
+  grupoId: string;
+  partidaId: string;
+  deltaEquipo1: number;
+  deltaEquipo2: number;
+}): Promise<ResultadoCargarMano> {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  try {
+    await cargarResultadoDeMano({
+      partidaId: input.partidaId,
+      solicitanteId: session.user.id,
+      deltaEquipo1: input.deltaEquipo1,
+      deltaEquipo2: input.deltaEquipo2,
+    });
+  } catch (error) {
+    if (error instanceof Error) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/grupos/${input.grupoId}/partidas/${input.partidaId}`);
+  revalidatePath(`/grupos/${input.grupoId}`);
+  return { ok: true };
 }
 
 export type EstadoRevancha = { message: string } | undefined;

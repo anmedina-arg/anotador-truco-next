@@ -328,23 +328,23 @@ export async function obtenerPartidaConEquipos(partidaId: string) {
   return { ...partida, equipo1, equipo2 };
 }
 
-// Anota (o resta) un punto en vivo al Equipo indicado. Solo el Anotador de
-// la Partida puede hacerlo, y solo mientras está en_curso. El contador nunca
-// sale de [0, 30] — restar en 0 es un no-op, y llegar a 30 cierra sola la
-// Partida (estado, Equipo ganador y estadísticas de los 6 Participantes se
-// actualizan en la misma transacción, según lo decidido en el ticket #1).
-// El Nivel de Victoria (simple/doble/triple, ver CONTEXT.md) del cierre
-// sale del puntaje final del Equipo perdedor — ticket #16.
+// Corrige un punto ya confirmado de una Mano anterior (se cargó de más, o
+// al Equipo equivocado). Solo el Anotador de la Partida, solo mientras
+// está en_curso. El contador nunca baja de 0 — restar en 0 es un no-op.
+// Nunca toca el Bloque ni ultimoPuntoAnotadoEn bajo ninguna circunstancia
+// (ver CONTEXT.md/Mano, ADR 0005) — cargar el resultado de una Mano nueva
+// es responsabilidad exclusiva de cargarResultadoDeMano, para que corregir
+// un error de carga no genere un segundo error en el tipo de Bloque.
 export async function anotarPunto(input: {
   partidaId: string;
   solicitanteId: string;
   equipo: 1 | 2;
-  delta: 1 | -1;
+  delta: -1;
 }) {
   const db = getDb();
 
   return db.transaction(async (tx) => {
-    // FOR UPDATE: dos toques de "+" casi simultáneos del mismo Anotador (o un
+    // FOR UPDATE: dos correcciones casi simultáneas del mismo Anotador (o un
     // doble submit) tienen que serializarse acá, no pisarse los cambios.
     const [partida] = await tx
       .select()
@@ -363,7 +363,7 @@ export async function anotarPunto(input: {
     }
 
     const actual = input.equipo === 1 ? partida.equipo1Puntos : partida.equipo2Puntos;
-    const nuevoValor = Math.min(PUNTOS_PARA_GANAR, Math.max(0, actual + input.delta));
+    const nuevoValor = Math.max(0, actual + input.delta);
 
     if (nuevoValor === actual) {
       return partida;
@@ -372,53 +372,118 @@ export async function anotarPunto(input: {
     const columnaPuntos =
       input.equipo === 1 ? { equipo1Puntos: nuevoValor } : { equipo2Puntos: nuevoValor };
 
-    // Bloque (ver CONTEXT.md / ADR 0003): una corrección de puntaje
-    // (delta: -1) no toca nada de esto bajo ninguna circunstancia — nunca
-    // dispara el recálculo ni actualiza ultimoPuntoAnotadoEn, para que
-    // corregir un error de carga no genere un segundo error en el tipo de
-    // Bloque (ver historia de usuario 5 del ticket #19).
-    let columnaBloque: { tipoDeBloqueActual: TipoDeBloque; manosJugadasEnBloqueActual: number } | undefined;
-    let columnaUltimoPunto: { ultimoPuntoAnotadoEn: Date } | undefined;
+    const [actualizada] = await tx
+      .update(partidasTable)
+      .set(columnaPuntos)
+      .where(eq(partidasTable.id, input.partidaId))
+      .returning();
+    return actualizada;
+  });
+}
 
-    if (input.delta === 1) {
-      const ahora = new Date();
-      columnaUltimoPunto = { ultimoPuntoAnotadoEn: ahora };
+// Carga el resultado de una Mano ya jugada y resuelta con las cartas (ver
+// CONTEXT.md/Mano, ADR 0005): el cliente ya decidió, con su propio
+// debounce, que la Mano terminó — acá no se compara ninguna ventana de
+// tiempo, se confía en que este llamado ya representa una Mano cerrada y
+// se recalcula el Bloque siempre. Recibe el puntaje neto que le
+// corresponde a cada Equipo (puede ser 0 para uno de los dos — Envido a un
+// Equipo, Truco al otro —, nunca los dos a la vez: no existe la Mano 0 a
+// 0). Solo el Anotador de la Partida, solo mientras está en_curso.
+export async function cargarResultadoDeMano(input: {
+  partidaId: string;
+  solicitanteId: string;
+  deltaEquipo1: number;
+  deltaEquipo2: number;
+}) {
+  if (
+    !Number.isInteger(input.deltaEquipo1) ||
+    !Number.isInteger(input.deltaEquipo2) ||
+    input.deltaEquipo1 < 0 ||
+    input.deltaEquipo2 < 0
+  ) {
+    throw new Error("El resultado de una Mano tiene que ser un número entero, 0 o más, por Equipo");
+  }
+  if (input.deltaEquipo1 === 0 && input.deltaEquipo2 === 0) {
+    throw new Error("Una Mano tiene que otorgar al menos 1 punto, a uno o a ambos Equipos");
+  }
 
-      const [grupo] = await tx
-        .select({
-          umbralInicioPicaPica: gruposTable.umbralInicioPicaPica,
-          umbralFinPicaPica: gruposTable.umbralFinPicaPica,
-          ventanaInactividadSegundos: gruposTable.ventanaInactividadSegundos,
-        })
-        .from(gruposTable)
-        .where(eq(gruposTable.id, partida.grupoId));
+  const db = getDb();
 
-      const ventanaMs = grupo.ventanaInactividadSegundos * 1000;
-      const esManoNueva =
-        partida.ultimoPuntoAnotadoEn === null ||
-        ahora.getTime() - partida.ultimoPuntoAnotadoEn.getTime() > ventanaMs;
+  return db.transaction(async (tx) => {
+    // FOR UPDATE: dos flushes casi simultáneos del mismo Anotador (doble
+    // pestaña, reintento tras recuperar de sessionStorage) se serializan
+    // acá, no se pisan los cambios.
+    const [partida] = await tx
+      .select()
+      .from(partidasTable)
+      .where(eq(partidasTable.id, input.partidaId))
+      .for("update");
 
-      if (esManoNueva) {
-        const bloque = calcularBloqueSiguiente({
-          tipoActual: partida.tipoDeBloqueActual,
-          manosJugadas: partida.manosJugadasEnBloqueActual,
-          umbralInicio: grupo.umbralInicioPicaPica,
-          umbralFin: grupo.umbralFinPicaPica,
-          // Puntaje de ambos Equipos antes de aplicar este punto.
-          equipo1Puntos: partida.equipo1Puntos,
-          equipo2Puntos: partida.equipo2Puntos,
-        });
-        columnaBloque = {
-          tipoDeBloqueActual: bloque.tipo,
-          manosJugadasEnBloqueActual: bloque.manosJugadas,
-        };
+    if (!partida) {
+      throw new Error("La Partida no existe");
+    }
+    if (partida.estado !== "en_curso") {
+      throw new Error("La Partida no está en curso");
+    }
+    if (!esAnotadorDePartida(partida, input.solicitanteId)) {
+      throw new Error("Solo el Anotador de la Partida puede cargar puntos");
+    }
+
+    const [grupo] = await tx
+      .select({
+        umbralInicioPicaPica: gruposTable.umbralInicioPicaPica,
+        umbralFinPicaPica: gruposTable.umbralFinPicaPica,
+      })
+      .from(gruposTable)
+      .where(eq(gruposTable.id, partida.grupoId));
+
+    // Puntaje: se aplica en orden fijo, Equipo 1 primero — si ya alcanza
+    // los 30, la Partida termina ahí mismo y el delta de Equipo 2 de esta
+    // misma Mano no llega a aplicarse (en la mesa real, la Partida ya
+    // había terminado antes de resolverse esa segunda parte de la Mano).
+    // Así nunca se llega a un estado con los dos Equipos en 30.
+    const nuevoEquipo1Puntos = Math.min(PUNTOS_PARA_GANAR, partida.equipo1Puntos + input.deltaEquipo1);
+    let equipoGanador: 1 | 2 | null = null;
+    let nuevoEquipo2Puntos = partida.equipo2Puntos;
+
+    if (nuevoEquipo1Puntos >= PUNTOS_PARA_GANAR) {
+      equipoGanador = 1;
+    } else {
+      nuevoEquipo2Puntos = Math.min(PUNTOS_PARA_GANAR, partida.equipo2Puntos + input.deltaEquipo2);
+      if (nuevoEquipo2Puntos >= PUNTOS_PARA_GANAR) {
+        equipoGanador = 2;
       }
     }
 
-    if (nuevoValor < PUNTOS_PARA_GANAR) {
+    const columnaPuntos = { equipo1Puntos: nuevoEquipo1Puntos, equipo2Puntos: nuevoEquipo2Puntos };
+
+    // Bloque (ver CONTEXT.md / ADR 0005): siempre se recalcula. tipoActual
+    // acá es el tipo con el que se jugó la Mano que se acaba de cargar (el
+    // valor persistido antes de esta llamada); el puntaje que corresponde
+    // pasarle es el de DESPUÉS de aplicar esta Mano, porque lo que se está
+    // por predecir es el tipo de la Mano *siguiente* — no el de la que ya
+    // se jugó y se está cargando ahora (ver el contrato de
+    // calcularBloqueSiguiente: "puntaje de ambos Equipos antes de la Mano
+    // que se está por jugar").
+    const bloque = calcularBloqueSiguiente({
+      tipoActual: partida.tipoDeBloqueActual,
+      manosJugadas: partida.manosJugadasEnBloqueActual,
+      umbralInicio: grupo.umbralInicioPicaPica,
+      umbralFin: grupo.umbralFinPicaPica,
+      equipo1Puntos: nuevoEquipo1Puntos,
+      equipo2Puntos: nuevoEquipo2Puntos,
+    });
+    const columnaBloque = {
+      tipoDeBloqueActual: bloque.tipo,
+      manosJugadasEnBloqueActual: bloque.manosJugadas,
+      // Informativo, ya no decide nada (ver ADR 0005).
+      ultimoPuntoAnotadoEn: new Date(),
+    };
+
+    if (equipoGanador === null) {
       const [actualizada] = await tx
         .update(partidasTable)
-        .set({ ...columnaPuntos, ...columnaBloque, ...columnaUltimoPunto })
+        .set({ ...columnaPuntos, ...columnaBloque })
         .where(eq(partidasTable.id, input.partidaId))
         .returning();
       return actualizada;
@@ -429,9 +494,8 @@ export async function anotarPunto(input: {
       .set({
         ...columnaPuntos,
         ...columnaBloque,
-        ...columnaUltimoPunto,
         estado: "finalizada",
-        equipoGanador: input.equipo,
+        equipoGanador,
         fechaFin: new Date(),
       })
       .where(eq(partidasTable.id, input.partidaId))
@@ -446,19 +510,21 @@ export async function anotarPunto(input: {
       .where(eq(partidasParticipantesTable.partidaId, input.partidaId));
 
     const ganadores = jugadores
-      .filter((j) => j.equipoNumero === input.equipo)
+      .filter((j) => j.equipoNumero === equipoGanador)
       .map((j) => j.participanteId);
     const perdedores = jugadores
-      .filter((j) => j.equipoNumero !== input.equipo)
+      .filter((j) => j.equipoNumero !== equipoGanador)
       .map((j) => j.participanteId);
 
     // Nivel de Victoria (ver CONTEXT.md) según el puntaje final del Equipo
-    // perdedor, que no cambia en este cierre (solo se tocó la columna del
-    // Equipo ganador arriba). El peso en puntos de una sola Victoria de este
-    // nivel sale de calcularEstadisticasRanking (ticket #15) pidiéndole el
-    // resultado de "1 Partida jugada y ganada, con este nivel" — así no se
-    // duplica la fórmula acá.
-    const puntajeDelPerdedor = input.equipo === 1 ? partida.equipo2Puntos : partida.equipo1Puntos;
+    // perdedor DESPUÉS de aplicar el delta de esta misma Mano — a
+    // diferencia de antes (una sola columna cambiaba por llamada), acá el
+    // perdedor también pudo haber sumado puntos en esta Mano (Envido a un
+    // Equipo, Truco al otro). El peso en puntos de una sola Victoria de
+    // este nivel sale de calcularEstadisticasRanking (ticket #15)
+    // pidiéndole el resultado de "1 Partida jugada y ganada, con este
+    // nivel" — así no se duplica la fórmula acá.
+    const puntajeDelPerdedor = equipoGanador === 1 ? nuevoEquipo2Puntos : nuevoEquipo1Puntos;
     const nivel = nivelDeVictoria(puntajeDelPerdedor);
     const { puntos: puntosPorEstaVictoria } = calcularEstadisticasRanking({
       partidasJugadas: 1,

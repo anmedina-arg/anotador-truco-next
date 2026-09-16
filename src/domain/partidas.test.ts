@@ -16,6 +16,7 @@ import {
   crearSiguienteEquipo,
   listarPartidasEnCursoDeGrupo,
   anotarPunto,
+  cargarResultadoDeMano,
   cancelarPartida,
 } from "./partidas";
 
@@ -555,37 +556,47 @@ describe("listarPartidasEnCursoDeGrupo", () => {
   });
 });
 
-describe("anotarPunto", () => {
-  async function crearPartidaDePrueba() {
-    const [p0, p1, p2, p3, p4, p5] = participanteIds;
-    return crearPartida({
-      grupoId,
-      anotadorParticipanteId: p0,
-      equipo1: [p0, p1, p2],
-      equipo2: [p3, p4, p5],
-    });
-  }
-
-  it("suma un punto al Equipo indicado", async () => {
-    const [p0] = participanteIds;
-    const partida = await crearPartidaDePrueba();
-
-    const actualizada = await anotarPunto({
-      partidaId: partida.id,
-      solicitanteId: p0,
-      equipo: 1,
-      delta: 1,
-    });
-
-    expect(actualizada.equipo1Puntos).toBe(1);
-    expect(actualizada.equipo2Puntos).toBe(0);
-    expect(actualizada.estado).toBe("en_curso");
+async function crearPartidaDePrueba() {
+  const [p0, p1, p2, p3, p4, p5] = participanteIds;
+  return crearPartida({
+    grupoId,
+    anotadorParticipanteId: p0,
+    equipo1: [p0, p1, p2],
+    equipo2: [p3, p4, p5],
   });
+}
 
+async function estadisticasPorParticipante() {
+  const db = getDb();
+  const stats = await db
+    .select()
+    .from(gruposParticipantesTable)
+    .where(eq(gruposParticipantesTable.grupoId, grupoId));
+
+  return new Map(stats.map((s) => [s.participanteId, s]));
+}
+
+// Siembra el marcador/Bloque directo por DB — igual que el resto de la
+// suite ya hace para arrancar en un estado puntual sin depender de
+// round-trips reales (ver "no devuelve Partidas canceladas" más arriba).
+async function sembrarMarcador(
+  partidaId: string,
+  valores: {
+    equipo1Puntos?: number;
+    equipo2Puntos?: number;
+    tipoDeBloqueActual?: "ronda" | "pica_pica";
+    manosJugadasEnBloqueActual?: number;
+  },
+) {
+  const db = getDb();
+  await db.update(partidasTable).set(valores).where(eq(partidasTable.id, partidaId));
+}
+
+describe("anotarPunto", () => {
   it("resta un punto al Equipo indicado", async () => {
     const [p0] = participanteIds;
     const partida = await crearPartidaDePrueba();
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 2, delta: 1 });
+    await sembrarMarcador(partida.id, { equipo2Puntos: 1 });
 
     const actualizada = await anotarPunto({
       partidaId: partida.id,
@@ -617,7 +628,7 @@ describe("anotarPunto", () => {
     const partida = await crearPartidaDePrueba();
 
     await expect(
-      anotarPunto({ partidaId: partida.id, solicitanteId: p1, equipo: 1, delta: 1 }),
+      anotarPunto({ partidaId: partida.id, solicitanteId: p1, equipo: 1, delta: -1 }),
     ).rejects.toThrow("Solo el Anotador de la Partida puede cargar puntos");
   });
 
@@ -627,65 +638,135 @@ describe("anotarPunto", () => {
     await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
 
     await expect(
-      anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 }),
+      anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: -1 }),
     ).rejects.toThrow("La Partida no está en curso");
   });
 
-  // Llegar a 30 anotando de a uno tomaría 30 round-trips a la base de test
-  // (supera el timeout de vitest por test) — se siembra el marcador
-  // directo por DB, igual que el resto de la suite ya hace para arrancar en
-  // un estado puntual (ver "no devuelve Partidas canceladas" más arriba), y
-  // se prueba solo la transición final que es lo que importa acá.
-  // equipo2Puntos elige el nivel de Victoria: 0 → triple, 1-15 → doble,
-  // 16-29 → simple (ver CONTEXT.md).
-  async function sembrarPuntos(partidaId: string, equipo2Puntos: number) {
-    const db = getDb();
-    await db
-      .update(partidasTable)
-      .set({ equipo1Puntos: 29, equipo2Puntos })
-      .where(eq(partidasTable.id, partidaId));
-  }
-  const sembrarEquipo1En29 = (partidaId: string) => sembrarPuntos(partidaId, 0);
-
-  it("al llegar a 30 cierra la Partida como finalizada y registra el Equipo ganador", async () => {
+  it("nunca toca tipoDeBloqueActual ni manosJugadasEnBloqueActual", async () => {
     const [p0] = participanteIds;
     const partida = await crearPartidaDePrueba();
-    await sembrarEquipo1En29(partida.id);
+    await sembrarMarcador(partida.id, {
+      equipo1Puntos: 5,
+      tipoDeBloqueActual: "pica_pica",
+      manosJugadasEnBloqueActual: 1,
+    });
 
-    const actual = await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+    const actualizada = await anotarPunto({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      equipo: 1,
+      delta: -1,
+    });
 
-    expect(actual.equipo1Puntos).toBe(30);
-    expect(actual.estado).toBe("finalizada");
-    expect(actual.equipoGanador).toBe(1);
-    expect(actual.fechaFin).toBeTruthy();
+    expect(actualizada.equipo1Puntos).toBe(4);
+    expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
+    expect(actualizada.manosJugadasEnBloqueActual).toBe(1);
+  });
+});
+
+describe("cargarResultadoDeMano", () => {
+  it("carga el delta neto de ambos Equipos en una sola llamada", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    const actualizada = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 2,
+      deltaEquipo2: 3,
+    });
+
+    expect(actualizada.equipo1Puntos).toBe(2);
+    expect(actualizada.equipo2Puntos).toBe(3);
+    expect(actualizada.estado).toBe("en_curso");
   });
 
-  it("al llegar a 30 no deja seguir anotando en esa Partida", async () => {
+  it("acepta un delta de 0 para un solo Equipo (Mano que le dio puntos a uno solo)", async () => {
     const [p0] = participanteIds;
     const partida = await crearPartidaDePrueba();
-    await sembrarEquipo1En29(partida.id);
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+
+    const actualizada = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 3,
+      deltaEquipo2: 0,
+    });
+
+    expect(actualizada.equipo1Puntos).toBe(3);
+    expect(actualizada.equipo2Puntos).toBe(0);
+  });
+
+  it("rechaza si los dos deltas son 0 (no existe la Mano 0 a 0)", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
 
     await expect(
-      anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 2, delta: 1 }),
+      cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 0, deltaEquipo2: 0 }),
+    ).rejects.toThrow("Una Mano tiene que otorgar al menos 1 punto, a uno o a ambos Equipos");
+  });
+
+  it("rechaza un delta negativo", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    await expect(
+      cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: -1, deltaEquipo2: 0 }),
+    ).rejects.toThrow("El resultado de una Mano tiene que ser un número entero, 0 o más, por Equipo");
+  });
+
+  it("rechaza si quien carga el resultado no es el Anotador de la Partida", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    await expect(
+      cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p1, deltaEquipo1: 1, deltaEquipo2: 0 }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede cargar puntos");
+  });
+
+  it("rechaza si la Partida no está en_curso", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    await expect(
+      cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 }),
     ).rejects.toThrow("La Partida no está en curso");
   });
 
-  async function estadisticasPorParticipante() {
-    const db = getDb();
-    const stats = await db
-      .select()
-      .from(gruposParticipantesTable)
-      .where(eq(gruposParticipantesTable.grupoId, grupoId));
+  it("clampea a 30 aunque el delta se pase", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { equipo1Puntos: 28 });
 
-    return new Map(stats.map((s) => [s.participanteId, s]));
-  }
+    const actualizada = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 5,
+      deltaEquipo2: 0,
+    });
 
-  it("al llegar a 30 actualiza las estadísticas de los 6 Participantes en la misma operación", async () => {
+    expect(actualizada.equipo1Puntos).toBe(30);
+    expect(actualizada.estado).toBe("finalizada");
+    expect(actualizada.equipoGanador).toBe(1);
+    expect(actualizada.fechaFin).toBeTruthy();
+  });
+
+  it("no deja seguir anotando en una Partida ya finalizada", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { equipo1Puntos: 29 });
+    await cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 });
+
+    await expect(
+      cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 0, deltaEquipo2: 1 }),
+    ).rejects.toThrow("La Partida no está en curso");
+  });
+
+  it("actualiza las estadísticas de los 6 Participantes en la misma operación al cerrar", async () => {
     const [p0, p1, p2, p3, p4, p5] = participanteIds;
     const partida = await crearPartidaDePrueba();
-    await sembrarEquipo1En29(partida.id);
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+    await sembrarMarcador(partida.id, { equipo1Puntos: 29 });
+    await cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 });
 
     const porId = await estadisticasPorParticipante();
 
@@ -710,8 +791,8 @@ describe("anotarPunto", () => {
   it("Victoria triple (perdedor en 0): 3 puntos y partidasGanadasTriples+1", async () => {
     const [p0, p1, p2] = participanteIds;
     const partida = await crearPartidaDePrueba();
-    await sembrarPuntos(partida.id, 0);
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+    await sembrarMarcador(partida.id, { equipo1Puntos: 29, equipo2Puntos: 0 });
+    await cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 });
 
     const porId = await estadisticasPorParticipante();
 
@@ -727,8 +808,8 @@ describe("anotarPunto", () => {
   it("Victoria doble (perdedor en 1-15): 2 puntos y partidasGanadasDobles+1", async () => {
     const [p0, p1, p2] = participanteIds;
     const partida = await crearPartidaDePrueba();
-    await sembrarPuntos(partida.id, 10);
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+    await sembrarMarcador(partida.id, { equipo1Puntos: 29, equipo2Puntos: 10 });
+    await cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 });
 
     const porId = await estadisticasPorParticipante();
 
@@ -744,8 +825,8 @@ describe("anotarPunto", () => {
   it("Victoria simple (perdedor en 16-29): 1 punto, sin dobles ni triples", async () => {
     const [p0, p1, p2] = participanteIds;
     const partida = await crearPartidaDePrueba();
-    await sembrarPuntos(partida.id, 20);
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+    await sembrarMarcador(partida.id, { equipo1Puntos: 29, equipo2Puntos: 20 });
+    await cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 });
 
     const porId = await estadisticasPorParticipante();
 
@@ -758,109 +839,110 @@ describe("anotarPunto", () => {
     }
   });
 
-  // Bloque (ver CONTEXT.md / ADR 0003): se siembra ultimoPuntoAnotadoEn
-  // directo por DB (igual que sembrarPuntos siembra el marcador) en vez de
-  // esperar segundos reales para probar la ventana de inactividad.
-  describe("Bloque (Ronda/Pica-pica)", () => {
-    async function sembrarBloque(
-      partidaId: string,
-      valores: {
-        equipo1Puntos?: number;
-        equipo2Puntos?: number;
-        tipoDeBloqueActual?: "ronda" | "pica_pica";
-        manosJugadasEnBloqueActual?: number;
-        ultimoPuntoAnotadoEn?: Date | null;
-      },
-    ) {
-      const db = getDb();
-      await db.update(partidasTable).set(valores).where(eq(partidasTable.id, partidaId));
-    }
+  // El perdedor también puede sumar puntos en esta misma Mano (Envido a un
+  // Equipo, Truco al otro) — el Nivel de Victoria tiene que usar su
+  // puntaje DESPUÉS de aplicar ese delta, no el de antes de la transacción
+  // (ver comentario en cargarResultadoDeMano). Equipo 2 (perdedor) entra
+  // en 15 y sale en 17 con este delta: un port que lea el valor de antes
+  // (15, "doble") en vez del de después (17, "simple") falla acá.
+  it("el Nivel de Victoria del perdedor usa su puntaje después del delta de esta misma Mano", async () => {
+    const [p0, p1, p2] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { equipo1Puntos: 15, equipo2Puntos: 29 });
 
-    it("con ultimoPuntoAnotadoEn null (primer punto de la Partida) recalcula el Bloque", async () => {
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 2,
+      deltaEquipo2: 1,
+    });
+
+    const porId = await estadisticasPorParticipante();
+    for (const ganadorId of [participanteIds[3], participanteIds[4], participanteIds[5]]) {
+      const s = porId.get(ganadorId)!;
+      expect(s.partidasGanadasDobles).toBe(0);
+      expect(s.partidasGanadas).toBe(1);
+    }
+    // Sanity: p0/p1/p2 (Equipo 1) son quienes perdieron acá.
+    expect(porId.get(p0)!.partidasPerdidas).toBe(1);
+    expect(porId.get(p1)!.partidasPerdidas).toBe(1);
+    expect(porId.get(p2)!.partidasPerdidas).toBe(1);
+  });
+
+  it("si Equipo 1 ya llega a 30, el delta de Equipo 2 en el mismo flush no se aplica", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { equipo1Puntos: 29, equipo2Puntos: 10 });
+
+    const actualizada = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 5,
+    });
+
+    expect(actualizada.equipoGanador).toBe(1);
+    expect(actualizada.equipo1Puntos).toBe(30);
+    expect(actualizada.equipo2Puntos).toBe(10);
+  });
+
+  describe("Bloque (Ronda/Pica-pica)", () => {
+    // La Mano que se está cargando ya se jugó (ver CONTEXT.md/Mano, ADR
+    // 0005) — lo que predice calcularBloqueSiguiente acá es el tipo de la
+    // Mano *siguiente*, así que usa el puntaje ya incluyendo esta Mano
+    // (3-2 antes, +3 para Equipo 2, 3-5 después: recién ahí cruza el
+    // umbral de inicio, 5), sin ninguna ventana de tiempo de por medio.
+    it("siempre recalcula el Bloque con el puntaje de después de esta Mano", async () => {
       const [p0] = participanteIds;
       const partida = await crearPartidaDePrueba();
       // Umbral de inicio por default del Grupo: 5 (ver schema/CONTEXT.md).
-      await sembrarBloque(partida.id, { equipo1Puntos: 5 });
+      await sembrarMarcador(partida.id, { equipo1Puntos: 3, equipo2Puntos: 2 });
 
-      const actualizada = await anotarPunto({
+      const actualizada = await cargarResultadoDeMano({
         partidaId: partida.id,
         solicitanteId: p0,
-        equipo: 1,
-        delta: 1,
+        deltaEquipo1: 0,
+        deltaEquipo2: 3,
       });
 
-      expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
-      expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
-      expect(actualizada.ultimoPuntoAnotadoEn).toBeTruthy();
-    });
-
-    it("con ultimoPuntoAnotadoEn viejo (fuera de la ventana de inactividad) recalcula el Bloque", async () => {
-      const [p0] = participanteIds;
-      const partida = await crearPartidaDePrueba();
-      await sembrarBloque(partida.id, {
-        equipo1Puntos: 5,
-        ultimoPuntoAnotadoEn: new Date(Date.now() - 20_000), // ventana default: 10s
-      });
-
-      const actualizada = await anotarPunto({
-        partidaId: partida.id,
-        solicitanteId: p0,
-        equipo: 1,
-        delta: 1,
-      });
-
+      expect(actualizada.equipo2Puntos).toBe(5);
       expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
       expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
     });
 
-    it("con ultimoPuntoAnotadoEn reciente (dentro de la ventana de inactividad) no cambia el Bloque", async () => {
+    it("avanza manosJugadasEnBloqueActual a mitad de un Pica-pica sin reevaluar la Fase", async () => {
       const [p0] = participanteIds;
       const partida = await crearPartidaDePrueba();
-      const ultimoPuntoSembrado = new Date(Date.now() - 2_000); // dentro de la ventana default: 10s
-      await sembrarBloque(partida.id, {
-        equipo1Puntos: 5,
-        tipoDeBloqueActual: "ronda",
-        manosJugadasEnBloqueActual: 0,
-        ultimoPuntoAnotadoEn: ultimoPuntoSembrado,
-      });
-
-      const actualizada = await anotarPunto({
-        partidaId: partida.id,
-        solicitanteId: p0,
-        equipo: 1,
-        delta: 1,
-      });
-
-      // El puntaje ya cruzó el umbral de inicio (5), pero como este punto
-      // pertenece a la misma Mano que se venía cargando, el Bloque no se
-      // reevalúa todavía.
-      expect(actualizada.tipoDeBloqueActual).toBe("ronda");
-      expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
-      expect(actualizada.ultimoPuntoAnotadoEn?.getTime()).toBeGreaterThan(ultimoPuntoSembrado.getTime());
-    });
-
-    it("delta: -1 nunca toca tipoDeBloqueActual, manosJugadasEnBloqueActual ni ultimoPuntoAnotadoEn", async () => {
-      const [p0] = participanteIds;
-      const partida = await crearPartidaDePrueba();
-      const ultimoPuntoSembrado = new Date(Date.now() - 20_000);
-      await sembrarBloque(partida.id, {
-        equipo1Puntos: 5,
+      await sembrarMarcador(partida.id, {
+        equipo1Puntos: 6,
+        equipo2Puntos: 3,
         tipoDeBloqueActual: "pica_pica",
         manosJugadasEnBloqueActual: 1,
-        ultimoPuntoAnotadoEn: ultimoPuntoSembrado,
       });
 
-      const actualizada = await anotarPunto({
+      const actualizada = await cargarResultadoDeMano({
         partidaId: partida.id,
         solicitanteId: p0,
-        equipo: 1,
-        delta: -1,
+        deltaEquipo1: 0,
+        deltaEquipo2: 1,
       });
 
-      expect(actualizada.equipo1Puntos).toBe(4);
       expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
-      expect(actualizada.manosJugadasEnBloqueActual).toBe(1);
-      expect(actualizada.ultimoPuntoAnotadoEn?.getTime()).toBe(ultimoPuntoSembrado.getTime());
+      expect(actualizada.manosJugadasEnBloqueActual).toBe(2);
+    });
+
+    it("sigue escribiendo ultimoPuntoAnotadoEn (informativo, ya no decide nada)", async () => {
+      const [p0] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+
+      const actualizada = await cargarResultadoDeMano({
+        partidaId: partida.id,
+        solicitanteId: p0,
+        deltaEquipo1: 1,
+        deltaEquipo2: 0,
+      });
+
+      expect(actualizada.ultimoPuntoAnotadoEn).toBeTruthy();
     });
   });
 });
@@ -909,7 +991,7 @@ describe("cancelarPartida", () => {
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
     });
-    await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: 1 });
+    await cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 });
     await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
 
     const db = getDb();
