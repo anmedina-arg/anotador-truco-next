@@ -6,23 +6,50 @@ import {
   calcularRatio,
   nivelDeVictoria,
   calcularEstadisticasRanking,
+  calcularPartidasGanadasSimples,
 } from "./grupos";
 
 describe("ordenarPorRanking", () => {
-  it("ordena de mayor a menor puntos", () => {
+  it("ordena de mayor a menor promedio (puntos/partidasJugadas), no por suma total", () => {
     const miembros = [
-      { participanteId: "a", puntos: 1 },
-      { participanteId: "b", puntos: 5 },
-      { participanteId: "c", puntos: 3 },
+      // 60/50 = 1.2
+      { participanteId: "a", puntos: 60, partidasJugadas: 50 },
+      // 3/1 = 3.0 — menos partidas jugadas, pero mejor promedio
+      { participanteId: "b", puntos: 3, partidasJugadas: 1 },
+      // 10/5 = 2.0
+      { participanteId: "c", puntos: 10, partidasJugadas: 5 },
     ];
 
     expect(ordenarPorRanking(miembros).map((m) => m.participanteId)).toEqual(["b", "c", "a"]);
   });
 
-  it("desempata por participanteId para que el orden sea determinístico", () => {
+  it("desempata por participanteId cuando el promedio es igual", () => {
     const miembros = [
-      { participanteId: "z", puntos: 2 },
-      { participanteId: "a", puntos: 2 },
+      { participanteId: "z", puntos: 2, partidasJugadas: 1 },
+      { participanteId: "a", puntos: 2, partidasJugadas: 1 },
+    ];
+
+    expect(ordenarPorRanking(miembros).map((m) => m.participanteId)).toEqual(["a", "z"]);
+  });
+
+  it("los de 0 Partidas jugadas van al final, sin excluirlos", () => {
+    const miembros = [
+      { participanteId: "sinJugar", puntos: 0, partidasJugadas: 0 },
+      { participanteId: "conRatioBajo", puntos: 1, partidasJugadas: 10 },
+      { participanteId: "conRatioAlto", puntos: 3, partidasJugadas: 1 },
+    ];
+
+    expect(ordenarPorRanking(miembros).map((m) => m.participanteId)).toEqual([
+      "conRatioAlto",
+      "conRatioBajo",
+      "sinJugar",
+    ]);
+  });
+
+  it("dos Participantes de 0 Partidas jugadas desempatan por participanteId entre sí", () => {
+    const miembros = [
+      { participanteId: "z", puntos: 0, partidasJugadas: 0 },
+      { participanteId: "a", puntos: 0, partidasJugadas: 0 },
     ];
 
     expect(ordenarPorRanking(miembros).map((m) => m.participanteId)).toEqual(["a", "z"]);
@@ -30,8 +57,8 @@ describe("ordenarPorRanking", () => {
 
   it("no muta el array recibido", () => {
     const miembros = [
-      { participanteId: "a", puntos: 1 },
-      { participanteId: "b", puntos: 5 },
+      { participanteId: "a", puntos: 1, partidasJugadas: 1 },
+      { participanteId: "b", puntos: 5, partidasJugadas: 1 },
     ];
     const original = [...miembros];
 
@@ -192,5 +219,27 @@ describe("calcularEstadisticasRanking", () => {
         partidasGanadasTriples: 0,
       }),
     ).toEqual({ puntos: 2, partidasPerdidas: 8 });
+  });
+});
+
+describe("calcularPartidasGanadasSimples", () => {
+  it("resta dobles y triples de las ganadas totales", () => {
+    expect(
+      calcularPartidasGanadasSimples({
+        partidasGanadas: 5,
+        partidasGanadasDobles: 1,
+        partidasGanadasTriples: 1,
+      }),
+    ).toBe(3);
+  });
+
+  it("es igual a ganadas cuando no hubo dobles ni triples", () => {
+    expect(
+      calcularPartidasGanadasSimples({
+        partidasGanadas: 4,
+        partidasGanadasDobles: 0,
+        partidasGanadasTriples: 0,
+      }),
+    ).toBe(4);
   });
 });

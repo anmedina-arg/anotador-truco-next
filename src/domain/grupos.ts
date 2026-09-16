@@ -175,11 +175,26 @@ function compararPorParticipanteId(a: { participanteId: string }, b: { participa
   return a.participanteId.localeCompare(b.participanteId);
 }
 
-// Ranking (ver CONTEXT.md): orden de Participantes por puntos.
-export function ordenarPorRanking<T extends { puntos: number; participanteId: string }>(
-  miembros: T[],
-): T[] {
-  return [...miembros].sort((a, b) => b.puntos - a.puntos || compararPorParticipanteId(a, b));
+// Ranking (ver CONTEXT.md): orden de Participantes por promedio
+// (puntos/Partidas jugadas), no por suma total — a propósito, para que
+// pocas Partidas con buen resultado no queden por detrás de muchas con
+// resultado mediocre. Sin Partidas jugadas el promedio no existe
+// (calcularRatio devuelve null): esos Participantes van todos al final,
+// desempatados entre sí igual que el resto (ver ADR 0002 — no hay umbral
+// mínimo de Partidas jugadas para entrar a este orden).
+export function ordenarPorRanking<
+  T extends { puntos: number; partidasJugadas: number; participanteId: string },
+>(miembros: T[]): T[] {
+  return [...miembros].sort((a, b) => {
+    const ratioA = calcularRatio(a.puntos, a.partidasJugadas);
+    const ratioB = calcularRatio(b.puntos, b.partidasJugadas);
+
+    if (ratioA === null && ratioB === null) return compararPorParticipanteId(a, b);
+    if (ratioA === null) return 1;
+    if (ratioB === null) return -1;
+
+    return ratioB - ratioA || compararPorParticipanteId(a, b);
+  });
 }
 
 // Orden por frecuencia de juego (ticket #11): quienes juegan más seguido
@@ -210,6 +225,18 @@ export function ordenarAlfabeticamente<
 // jugó ninguna Partida, para no confundir "no jugó" con "ratio 0".
 export function calcularRatio(puntos: number, partidasJugadas: number): number | null {
   return partidasJugadas === 0 ? null : puntos / partidasJugadas;
+}
+
+// Victorias simples de un grupo_participante — no se persisten aparte (ver
+// calcularEstadisticasRanking), quedan siempre implícitas como el resto de
+// las ganadas que no fueron dobles ni triples. Único lugar que hace esa
+// resta, para que la UI no la repita suelta.
+export function calcularPartidasGanadasSimples(input: {
+  partidasGanadas: number;
+  partidasGanadasDobles: number;
+  partidasGanadasTriples: number;
+}): number {
+  return input.partidasGanadas - input.partidasGanadasDobles - input.partidasGanadasTriples;
 }
 
 // Nivel de Victoria (ver CONTEXT.md) según el puntaje final del Equipo

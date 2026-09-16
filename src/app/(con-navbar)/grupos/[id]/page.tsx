@@ -6,6 +6,7 @@ import {
   ordenarPorRanking,
   ordenarAlfabeticamente,
   calcularRatio,
+  calcularPartidasGanadasSimples,
 } from "@/domain/grupos";
 import { listarPartidasEnCursoDeGrupo, esAnotadorDePartida } from "@/domain/partidas";
 import { nombresDeEquipo, inicialesDeParticipante } from "@/domain/participantes";
@@ -113,6 +114,15 @@ export default async function GrupoDetallePage({
                 <th className="p-2 text-right font-bold">Pts</th>
                 <th className="p-2 text-right font-bold">PJ</th>
                 <th className="p-2 text-right font-bold">PG</th>
+                <th className="p-2 text-right font-bold" title="Victorias simples">
+                  VS
+                </th>
+                <th className="p-2 text-right font-bold" title="Victorias dobles">
+                  VD
+                </th>
+                <th className="p-2 text-right font-bold" title="Victorias triples">
+                  VT
+                </th>
                 <th className="p-2 text-right font-bold">PP</th>
                 <th className="p-2 text-right font-bold">Ratio</th>
               </tr>
@@ -133,6 +143,11 @@ export default async function GrupoDetallePage({
                   <td className="p-2 text-right text-accent">{miembro.puntos}</td>
                   <td className="p-2 text-right text-muted">{miembro.partidasJugadas}</td>
                   <td className="p-2 text-right text-muted">{miembro.partidasGanadas}</td>
+                  <td className="p-2 text-right text-muted">
+                    {calcularPartidasGanadasSimples(miembro)}
+                  </td>
+                  <td className="p-2 text-right text-muted">{miembro.partidasGanadasDobles}</td>
+                  <td className="p-2 text-right text-muted">{miembro.partidasGanadasTriples}</td>
                   <td className="p-2 text-right text-muted">{miembro.partidasPerdidas}</td>
                   <td className="p-2 text-right text-muted">
                     {formatearRatio(miembro.puntos, miembro.partidasJugadas)}
