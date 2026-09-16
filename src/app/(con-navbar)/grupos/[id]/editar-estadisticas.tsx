@@ -8,13 +8,15 @@ export function EditarEstadisticas({
   participanteId,
   partidasJugadas,
   partidasGanadas,
-  partidasPerdidas,
+  partidasGanadasDobles,
+  partidasGanadasTriples,
 }: {
   grupoId: string;
   participanteId: string;
   partidasJugadas: number;
   partidasGanadas: number;
-  partidasPerdidas: number;
+  partidasGanadasDobles: number;
+  partidasGanadasTriples: number;
 }) {
   const [estado, accion, pendiente] = useActionState<EstadoEditarEstadisticas, FormData>(
     actualizarEstadisticasAction,
@@ -29,7 +31,7 @@ export function EditarEstadisticas({
       <form action={accion} className="mt-2 flex flex-col gap-3 rounded-2xl border-2 border-line bg-bg p-3">
         <input type="hidden" name="grupoId" value={grupoId} />
         <input type="hidden" name="participanteId" value={participanteId} />
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1 text-xs font-bold text-muted">
             Jugadas
             <input
@@ -51,12 +53,22 @@ export function EditarEstadisticas({
             />
           </label>
           <label className="flex flex-col gap-1 text-xs font-bold text-muted">
-            Perdidas
+            Ganadas dobles
             <input
               type="number"
-              name="partidasPerdidas"
+              name="partidasGanadasDobles"
               min={0}
-              defaultValue={partidasPerdidas}
+              defaultValue={partidasGanadasDobles}
+              className="rounded-xl border-2 border-line p-2 text-sm font-bold text-ink"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs font-bold text-muted">
+            Ganadas triples
+            <input
+              type="number"
+              name="partidasGanadasTriples"
+              min={0}
+              defaultValue={partidasGanadasTriples}
               className="rounded-xl border-2 border-line p-2 text-sm font-bold text-ink"
             />
           </label>

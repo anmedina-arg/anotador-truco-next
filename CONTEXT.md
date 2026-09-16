@@ -44,7 +44,8 @@ Enfrentamiento entre exactamente 2 Equipos. Se compone de varias Manos. Tiene
 un contador de puntos por Equipo que arranca en 0 y sube de a los puntos que
 se ganan en cada Mano, sin resetear nunca, hasta que un Equipo llega a 30 —
 ese Equipo gana la Partida y no se puede superar los 30. Al finalizar, cada
-Participante del Equipo ganador suma 1 punto a su Ranking. Solo se persiste
+Participante del Equipo ganador suma a su Ranking los puntos de la Victoria
+simple/doble/triple correspondiente (ver Ranking). Solo se persiste
 el resultado final (Equipos, ganador, puntaje final) — no cada Mano
 individual. Una Partida también puede terminar **cancelada** (se corta antes
 de que un Equipo llegue a 30): en ese caso libera a sus Participantes para
@@ -52,8 +53,9 @@ formar nuevos Equipos, pero no cuenta como Partida jugada, ganada ni perdida
 para el Ranking ni el dashboard.
 
 **Mano**:
-Una jugada dentro de una Partida. En cada Mano, uno de los dos Equipos puede
-sumar puntos (o ninguno); esos puntos alimentan el contador de la Partida.
+Una jugada dentro de una Partida. Siempre otorga al menos 1 punto a
+exactamente uno de los dos Equipos — no existe la Mano que termine 0 a 0
+(parda). Esos puntos alimentan el contador de la Partida.
 
 **Malas / Buenas**:
 Las dos mitades del contador de una Partida: los primeros 15 puntos (0-15)

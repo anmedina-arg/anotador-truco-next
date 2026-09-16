@@ -73,7 +73,8 @@ export async function actualizarEstadisticasAction(
   const participanteId = String(formData.get("participanteId") ?? "");
   const partidasJugadas = Number(formData.get("partidasJugadas"));
   const partidasGanadas = Number(formData.get("partidasGanadas"));
-  const partidasPerdidas = Number(formData.get("partidasPerdidas"));
+  const partidasGanadasDobles = Number(formData.get("partidasGanadasDobles"));
+  const partidasGanadasTriples = Number(formData.get("partidasGanadasTriples"));
 
   try {
     await actualizarEstadisticas({
@@ -82,7 +83,8 @@ export async function actualizarEstadisticasAction(
       participanteId,
       partidasJugadas,
       partidasGanadas,
-      partidasPerdidas,
+      partidasGanadasDobles,
+      partidasGanadasTriples,
     });
   } catch (error) {
     if (error instanceof EstadisticasInvalidasError) {

@@ -11,6 +11,8 @@ import {
   unirseAGrupo,
   regenerarCodigoInvitacion,
   sacarMiembro,
+  actualizarEstadisticas,
+  EstadisticasInvalidasError,
 } from "./grupos";
 
 const emailAdmin = "test-grupos-admin@example.com";
@@ -230,5 +232,81 @@ describe("sacarMiembro", () => {
     await expect(
       sacarMiembro({ grupoId: grupo.id, solicitanteId: adminId, participanteId: adminId }),
     ).rejects.toThrow("El admin no puede sacarse a sí mismo del Grupo");
+  });
+});
+
+describe("actualizarEstadisticas", () => {
+  it("deriva puntos y partidasPerdidas a partir de jugadas/ganadas/dobles/triples", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+    await unirseAGrupo({ codigoInvitacion: grupo.codigoInvitacion, participanteId: ajenoId });
+
+    await actualizarEstadisticas({
+      grupoId: grupo.id,
+      solicitanteId: adminId,
+      participanteId: ajenoId,
+      partidasJugadas: 8,
+      partidasGanadas: 5,
+      partidasGanadasDobles: 1,
+      partidasGanadasTriples: 1,
+    });
+
+    const [miembro] = await listarMiembrosDeGrupo(grupo.id).then((miembros) =>
+      miembros.filter((m) => m.participanteId === ajenoId),
+    );
+    expect(miembro.partidasJugadas).toBe(8);
+    expect(miembro.partidasGanadas).toBe(5);
+    expect(miembro.partidasPerdidas).toBe(3);
+    expect(miembro.puntos).toBe(8);
+  });
+
+  it("rechaza si ganadas dobles + triples supera a ganadas totales", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+    await unirseAGrupo({ codigoInvitacion: grupo.codigoInvitacion, participanteId: ajenoId });
+
+    await expect(
+      actualizarEstadisticas({
+        grupoId: grupo.id,
+        solicitanteId: adminId,
+        participanteId: ajenoId,
+        partidasJugadas: 5,
+        partidasGanadas: 2,
+        partidasGanadasDobles: 1,
+        partidasGanadasTriples: 2,
+      }),
+    ).rejects.toThrow(EstadisticasInvalidasError);
+  });
+
+  it("rechaza si ganadas supera a jugadas", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+    await unirseAGrupo({ codigoInvitacion: grupo.codigoInvitacion, participanteId: ajenoId });
+
+    await expect(
+      actualizarEstadisticas({
+        grupoId: grupo.id,
+        solicitanteId: adminId,
+        participanteId: ajenoId,
+        partidasJugadas: 2,
+        partidasGanadas: 5,
+        partidasGanadasDobles: 0,
+        partidasGanadasTriples: 0,
+      }),
+    ).rejects.toThrow(EstadisticasInvalidasError);
+  });
+
+  it("rechaza si quien lo pide no es el admin", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+    await unirseAGrupo({ codigoInvitacion: grupo.codigoInvitacion, participanteId: ajenoId });
+
+    await expect(
+      actualizarEstadisticas({
+        grupoId: grupo.id,
+        solicitanteId: ajenoId,
+        participanteId: adminId,
+        partidasJugadas: 1,
+        partidasGanadas: 1,
+        partidasGanadasDobles: 0,
+        partidasGanadasTriples: 0,
+      }),
+    ).rejects.toThrow("Solo el admin del Grupo puede hacer esto");
   });
 });

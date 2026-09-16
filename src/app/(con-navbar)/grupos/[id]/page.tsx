@@ -179,7 +179,8 @@ export default async function GrupoDetallePage({
                   participanteId={miembro.participanteId}
                   partidasJugadas={miembro.partidasJugadas}
                   partidasGanadas={miembro.partidasGanadas}
-                  partidasPerdidas={miembro.partidasPerdidas}
+                  partidasGanadasDobles={miembro.partidasGanadasDobles}
+                  partidasGanadasTriples={miembro.partidasGanadasTriples}
                 />
               )}
             </li>

@@ -159,6 +159,8 @@ export async function listarMiembrosDeGrupo(grupoId: string) {
       puntos: gruposParticipantesTable.puntos,
       partidasJugadas: gruposParticipantesTable.partidasJugadas,
       partidasGanadas: gruposParticipantesTable.partidasGanadas,
+      partidasGanadasDobles: gruposParticipantesTable.partidasGanadasDobles,
+      partidasGanadasTriples: gruposParticipantesTable.partidasGanadasTriples,
       partidasPerdidas: gruposParticipantesTable.partidasPerdidas,
     })
     .from(gruposParticipantesTable)
@@ -220,12 +222,12 @@ export function nivelDeVictoria(puntajeFinalDelPerdedor: number): "simple" | "do
 }
 
 // Único lugar que calcula puntos/partidasPerdidas de un grupo_participante
-// (ver CONTEXT.md, Ranking). anotarPunto (cierre de Partida en vivo, ticket
-// #16) ya pasa por acá — le pide "1 Partida jugada y ganada con este Nivel"
-// para obtener el peso de una sola Victoria, sin duplicar la fórmula.
-// actualizarEstadisticas (corrección manual del admin, ticket #17)
-// todavía no. Simples quedan implícitas (ganadas - dobles - triples):
-// puntos = simples×1 + dobles×2 + triples×3, que se simplifica a
+// (ver CONTEXT.md, Ranking). anotarPunto (cierre de Partida en vivo) le pide
+// "1 Partida jugada y ganada con este Nivel" para obtener el peso de una
+// sola Victoria; actualizarEstadisticas (corrección manual del admin) le
+// pasa el desglose absoluto que cargó el admin — mismo cálculo, sin
+// duplicar la fórmula. Simples quedan implícitas (ganadas - dobles -
+// triples): puntos = simples×1 + dobles×2 + triples×3, que se simplifica a
 // ganadas + dobles + 2×triples. No valida que dobles+triples <= ganadas —
 // esa validación es responsabilidad del caller (ver actualizarEstadisticas).
 export function calcularEstadisticasRanking(input: {
@@ -368,35 +370,54 @@ export async function sacarMiembro(input: {
 }
 
 // Corrección manual del admin (ej. una Partida jugada fuera de la app, o un
-// error de carga) — puntos se recalcula como partidasGanadas para no romper
-// el invariante que ya usa el resto del Ranking (puntos = 1 por victoria,
-// ver el UPDATE de anotarPunto/cerrarPartida en partidas.ts).
+// error de carga) — recibe el desglose de victorias (ganadas totales, más
+// cuántas de esas fueron dobles/triples; simples quedan implícitas) y deriva
+// puntos/partidasPerdidas con calcularEstadisticasRanking (ticket #15), para
+// no duplicar esa fórmula acá.
 export async function actualizarEstadisticas(input: {
   grupoId: string;
   solicitanteId: string;
   participanteId: string;
   partidasJugadas: number;
   partidasGanadas: number;
-  partidasPerdidas: number;
+  partidasGanadasDobles: number;
+  partidasGanadasTriples: number;
 }) {
   await requerirAdmin(input.grupoId, input.solicitanteId);
 
-  const { partidasJugadas, partidasGanadas, partidasPerdidas } = input;
+  const { partidasJugadas, partidasGanadas, partidasGanadasDobles, partidasGanadasTriples } = input;
   if (
-    [partidasJugadas, partidasGanadas, partidasPerdidas].some(
+    [partidasJugadas, partidasGanadas, partidasGanadasDobles, partidasGanadasTriples].some(
       (valor) => !Number.isInteger(valor) || valor < 0,
     )
   ) {
     throw new EstadisticasInvalidasError("Los valores tienen que ser números enteros, 0 o más");
   }
-  if (partidasGanadas + partidasPerdidas > partidasJugadas) {
-    throw new EstadisticasInvalidasError("Ganadas + Perdidas no puede ser más que Jugadas");
+  if (partidasGanadas > partidasJugadas) {
+    throw new EstadisticasInvalidasError("Ganadas no puede ser más que Jugadas");
   }
+  if (partidasGanadasDobles + partidasGanadasTriples > partidasGanadas) {
+    throw new EstadisticasInvalidasError("Ganadas dobles + triples no puede ser más que Ganadas");
+  }
+
+  const { puntos, partidasPerdidas } = calcularEstadisticasRanking({
+    partidasJugadas,
+    partidasGanadas,
+    partidasGanadasDobles,
+    partidasGanadasTriples,
+  });
 
   const db = getDb();
   const actualizado = await db
     .update(gruposParticipantesTable)
-    .set({ partidasJugadas, partidasGanadas, partidasPerdidas, puntos: partidasGanadas })
+    .set({
+      partidasJugadas,
+      partidasGanadas,
+      partidasGanadasDobles,
+      partidasGanadasTriples,
+      partidasPerdidas,
+      puntos,
+    })
     .where(
       and(
         eq(gruposParticipantesTable.grupoId, input.grupoId),
