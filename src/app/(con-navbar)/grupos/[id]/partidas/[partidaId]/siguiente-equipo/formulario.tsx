@@ -4,9 +4,11 @@ import { useActionState, useState } from "react";
 import type { ParticipanteBasico } from "@/domain/participantes";
 import { nombreDeParticipante, nombresDeEquipo } from "@/domain/participantes";
 import {
-  ArmadoDeParejasPicaPica,
   InputsOcultosDeParejas,
+  ModalDeParejasPicaPica,
+  ResumenDeParejasPicaPica,
   usePicaPicaParejas,
+  useModalDeParejas,
 } from "@/components/armado-parejas-pica-pica";
 import { crearSiguienteEquipoAction } from "../actions";
 
@@ -45,6 +47,7 @@ export function FormularioSiguienteEquipo({
   // 0006) — el desafiante es gente nueva, así que se arman de cero, igual
   // que en Nueva Partida.
   const { parejas, seleccionado, tocar, completas } = usePicaPicaParejas(equipoGanador, equipoDesafianteElegido);
+  const modal = useModalDeParejas(equiposCompletos);
 
   return (
     <form action={accion} className="flex flex-col gap-4">
@@ -82,15 +85,17 @@ export function FormularioSiguienteEquipo({
         </ul>
       </div>
 
-      {equiposCompletos && (
-        <ArmadoDeParejasPicaPica
-          equipo1={equipoGanador}
-          equipo2={equipoDesafianteElegido}
-          parejas={parejas}
-          seleccionado={seleccionado}
-          onTocar={tocar}
-        />
-      )}
+      {equiposCompletos && <ResumenDeParejasPicaPica parejas={parejas} onAbrir={modal.abrir} />}
+
+      <ModalDeParejasPicaPica
+        abierto={modal.abierto}
+        onCerrar={modal.cerrar}
+        equipo1={equipoGanador}
+        equipo2={equipoDesafianteElegido}
+        parejas={parejas}
+        seleccionado={seleccionado}
+        onTocar={tocar}
+      />
 
       {necesitaElegirAnotador && (
         <div className="flex flex-col gap-1">

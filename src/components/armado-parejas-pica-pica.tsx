@@ -66,6 +66,21 @@ export function usePicaPicaParejas(equipo1: ParticipanteBasico[], equipo2: Parti
   return { parejas, seleccionado, tocar, completas: parejas.length === PAREJAS_REQUERIDAS };
 }
 
+// El armado se muestra en un modal (en vez de inline en la lista) para no
+// depender de scrollear hasta abajo, sobre todo cuando la lista de
+// candidatos crece — se abre solo cuando los dos Equipos quedan completos y
+// se cierra si deja de estarlo (alguien reasignado a último momento no deja
+// un modal abierto con parejas que ya no corresponden).
+export function useModalDeParejas(equiposCompletos: boolean) {
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    setAbierto(equiposCompletos);
+  }, [equiposCompletos]);
+
+  return { abierto, abrir: () => setAbierto(true), cerrar: () => setAbierto(false) };
+}
+
 // Mismo color por posición de pareja (1/2/3) en los dos lados — le deja ver
 // al Anotador, de un vistazo, cuál enfrenta a cuál sin tener que leer los
 // nombres.
@@ -132,6 +147,75 @@ export function ArmadoDeParejasPicaPica({
             <BotonParticipante key={miembro.participanteId} miembro={miembro} />
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Resumen + disparador para reabrir el modal una vez que ya se cerró (o
+// para volver a editar el armado sin tener que esperar a que se abra solo).
+export function ResumenDeParejasPicaPica({
+  parejas,
+  onAbrir,
+}: {
+  parejas: ParejaPicaPica[];
+  onAbrir: () => void;
+}) {
+  const completas = parejas.length === PAREJAS_REQUERIDAS;
+
+  return (
+    <button
+      type="button"
+      onClick={onAbrir}
+      className="flex items-center justify-between rounded-2xl border-2 border-line bg-surface p-3 text-sm font-bold text-ink"
+    >
+      <span>Parejas de Pica-pica</span>
+      <span className={completas ? "text-accent2" : "text-danger"}>
+        {parejas.length} de 3 armadas — Editar
+      </span>
+    </button>
+  );
+}
+
+export function ModalDeParejasPicaPica({
+  abierto,
+  onCerrar,
+  equipo1,
+  equipo2,
+  parejas,
+  seleccionado,
+  onTocar,
+}: {
+  abierto: boolean;
+  onCerrar: () => void;
+  equipo1: ParticipanteBasico[];
+  equipo2: ParticipanteBasico[];
+  parejas: ParejaPicaPica[];
+  seleccionado: string | null;
+  onTocar: (participanteId: string) => void;
+}) {
+  if (!abierto) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      onClick={onCerrar}
+    >
+      <div className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <ArmadoDeParejasPicaPica
+          equipo1={equipo1}
+          equipo2={equipo2}
+          parejas={parejas}
+          seleccionado={seleccionado}
+          onTocar={onTocar}
+        />
+        <button
+          type="button"
+          onClick={onCerrar}
+          className="mt-3 w-full rounded-2xl bg-accent p-3 font-display font-bold text-white shadow-pop-accent"
+        >
+          Listo
+        </button>
       </div>
     </div>
   );

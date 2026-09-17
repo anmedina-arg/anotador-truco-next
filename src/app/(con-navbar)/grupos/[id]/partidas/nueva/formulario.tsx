@@ -4,9 +4,11 @@ import { useState } from "react";
 import { useActionState } from "react";
 import type { ParticipanteBasico } from "@/domain/participantes";
 import {
-  ArmadoDeParejasPicaPica,
   InputsOcultosDeParejas,
+  ModalDeParejasPicaPica,
+  ResumenDeParejasPicaPica,
   usePicaPicaParejas,
+  useModalDeParejas,
 } from "@/components/armado-parejas-pica-pica";
 import { crearPartidaAction } from "./actions";
 
@@ -30,6 +32,7 @@ export function FormularioNuevaPartida({
   const equiposCompletos = equipo1.length === 3 && equipo2.length === 3;
 
   const { parejas, seleccionado, tocar, completas } = usePicaPicaParejas(equipo1, equipo2);
+  const modal = useModalDeParejas(equiposCompletos);
 
   return (
     <form action={accion} className="flex flex-col gap-4">
@@ -81,15 +84,17 @@ export function FormularioNuevaPartida({
         ))}
       </ul>
 
-      {equiposCompletos && (
-        <ArmadoDeParejasPicaPica
-          equipo1={equipo1}
-          equipo2={equipo2}
-          parejas={parejas}
-          seleccionado={seleccionado}
-          onTocar={tocar}
-        />
-      )}
+      {equiposCompletos && <ResumenDeParejasPicaPica parejas={parejas} onAbrir={modal.abrir} />}
+
+      <ModalDeParejasPicaPica
+        abierto={modal.abierto}
+        onCerrar={modal.cerrar}
+        equipo1={equipo1}
+        equipo2={equipo2}
+        parejas={parejas}
+        seleccionado={seleccionado}
+        onTocar={tocar}
+      />
 
       {estado?.message && <p className="text-sm font-bold text-danger">{estado.message}</p>}
 
