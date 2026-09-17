@@ -62,3 +62,20 @@ vez de intentar prevenirla.
   puede reenviar y contar esa Mano dos veces. Riesgo aceptado, del mismo
   tipo que el que ya documentaba ADR 0003 para Manos mal contadas —
   recuperable a mano con "-".
+- La corrección manual del Bloque (ticket #21) tiene que forzar el flush
+  de cualquier toque todavía pendiente *antes* de aplicarse — si no, esa
+  Mano en curso se terminaría cargando contra el Bloque ya corregido en
+  vez del que tenía cuando el Anotador la empezó a anotar. Por esto
+  `CorregirBloque` no sigue el patrón `<form>` + `useActionState` que usa
+  el resto de las correcciones admin de la app (ver `EditarEstadisticas`):
+  necesita coordinarse explícitamente con la misma `flush` que usa el
+  debounce, algo que un `<form>` declarativo no puede expresar.
+- No alcanza con flushear lo que ya estaba pendiente al pedir la
+  corrección: mientras la corrección en sí todavía está en vuelo (esperando
+  la respuesta del servidor), un toque de "+"/"-" nuevo arrancaría otra
+  Mano que la corrección no está esperando, y esa Mano terminaría
+  flusheando contra el Bloque ya corregido. Por esto los botones de
+  puntaje de los dos Equipos (no solo los de `CorregirBloque`) se
+  deshabilitan por toda la duración de la operación — desde que se pide
+  la corrección hasta que el servidor responde, no solo mientras se
+  resuelve el flush previo (ver `corrigiendoBloque` en `MarcadorEnVivo`).

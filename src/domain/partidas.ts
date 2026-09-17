@@ -617,3 +617,46 @@ export async function cancelarPartida(input: { partidaId: string; solicitanteId:
     return cancelada;
   });
 }
+
+// Corrección manual del Bloque (ver CONTEXT.md/Bloque, ticket #21): cuando
+// la detección automática se desincroniza de lo que se está jugando en la
+// mesa real, el Anotador puede pisar el tipo a mano. Reinicia
+// manosJugadasEnBloqueActual a 0 en los dos casos — para Ronda ese valor es
+// irrelevante (siempre es 1 sola Mano), para Pica-pica arranca de cero sus
+// 3 Manos (ver historia de usuario 7 del ticket #19). No valida en qué Fase
+// está la Partida ni pasa por calcularBloqueSiguiente — es una corrección
+// deliberada del Anotador, y ese cálculo ya sabe seguir la alternancia
+// desde cualquier estado en la próxima Mano que se cargue.
+export async function corregirBloqueManualmente(input: {
+  partidaId: string;
+  solicitanteId: string;
+  tipo: TipoDeBloque;
+}) {
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    const [partida] = await tx
+      .select()
+      .from(partidasTable)
+      .where(eq(partidasTable.id, input.partidaId))
+      .for("update");
+
+    if (!partida) {
+      throw new Error("La Partida no existe");
+    }
+    if (partida.estado !== "en_curso") {
+      throw new Error("La Partida no está en curso");
+    }
+    if (!esAnotadorDePartida(partida, input.solicitanteId)) {
+      throw new Error("Solo el Anotador de la Partida puede corregir el Bloque");
+    }
+
+    const [actualizada] = await tx
+      .update(partidasTable)
+      .set({ tipoDeBloqueActual: input.tipo, manosJugadasEnBloqueActual: 0 })
+      .where(eq(partidasTable.id, input.partidaId))
+      .returning();
+
+    return actualizada;
+  });
+}

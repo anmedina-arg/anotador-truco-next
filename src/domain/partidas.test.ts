@@ -18,6 +18,7 @@ import {
   anotarPunto,
   cargarResultadoDeMano,
   cancelarPartida,
+  corregirBloqueManualmente,
 } from "./partidas";
 
 // p0..p6 quedan como miembros del Grupo; p7 registrado pero sin sumarse,
@@ -1035,5 +1036,117 @@ describe("cancelarPartida", () => {
     await expect(
       cancelarPartida({ partidaId: partida.id, solicitanteId: p0 }),
     ).rejects.toThrow("La Partida no está en curso");
+  });
+});
+
+describe("corregirBloqueManualmente", () => {
+  it("corrige a Pica-pica y reinicia manosJugadasEnBloqueActual a 0", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    const actualizada = await corregirBloqueManualmente({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      tipo: "pica_pica",
+    });
+
+    expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
+    expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
+  });
+
+  it("corrige a Ronda y reinicia manosJugadasEnBloqueActual a 0", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica", manosJugadasEnBloqueActual: 2 });
+
+    const actualizada = await corregirBloqueManualmente({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      tipo: "ronda",
+    });
+
+    expect(actualizada.tipoDeBloqueActual).toBe("ronda");
+    expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
+  });
+
+  it("rechaza si quien corrige no es el Anotador de la Partida", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    await expect(
+      corregirBloqueManualmente({ partidaId: partida.id, solicitanteId: p1, tipo: "pica_pica" }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede corregir el Bloque");
+  });
+
+  it("rechaza si la Partida no está en_curso", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    await expect(
+      corregirBloqueManualmente({ partidaId: partida.id, solicitanteId: p0, tipo: "pica_pica" }),
+    ).rejects.toThrow("La Partida no está en curso");
+  });
+
+  it("después de corregir a Pica-pica, las siguientes 3 Manos completan ese Bloque antes de reevaluar la Fase", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await corregirBloqueManualmente({ partidaId: partida.id, solicitanteId: p0, tipo: "pica_pica" });
+
+    const mano1 = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+    });
+    expect(mano1.tipoDeBloqueActual).toBe("pica_pica");
+    expect(mano1.manosJugadasEnBloqueActual).toBe(1);
+
+    const mano2 = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+    });
+    expect(mano2.tipoDeBloqueActual).toBe("pica_pica");
+    expect(mano2.manosJugadasEnBloqueActual).toBe(2);
+
+    // La 3ra Mano completa el Bloque y ya reevalúa la Fase en esta misma
+    // carga (ver ADR sobre calcularBloqueSiguiente) — el puntaje (3-0)
+    // sigue por debajo del umbral de inicio (5), así que vuelve a Ronda,
+    // igual que un Bloque de Pica-pica detectado automáticamente.
+    const mano3 = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+    });
+    expect(mano3.tipoDeBloqueActual).toBe("ronda");
+    expect(mano3.manosJugadasEnBloqueActual).toBe(0);
+  });
+
+  it("después de corregir a Ronda, la Mano siguiente ya dispara una nueva evaluación de Fase con normalidad", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, {
+      equipo1Puntos: 4,
+      tipoDeBloqueActual: "pica_pica",
+      manosJugadasEnBloqueActual: 1,
+    });
+    await corregirBloqueManualmente({ partidaId: partida.id, solicitanteId: p0, tipo: "ronda" });
+
+    // Umbral de inicio por default del Grupo: 5. El puntaje antes de esta
+    // Mano es 4-0; con este delta pasa a 5-0 y cruza el umbral — sin
+    // ningún caso especial para la corrección manual, es el mismo cálculo
+    // de siempre (tipoActual: "ronda" siempre reevalúa de inmediato).
+    const actualizada = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+    });
+
+    expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
+    expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
   });
 });

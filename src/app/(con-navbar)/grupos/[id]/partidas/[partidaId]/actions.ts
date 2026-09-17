@@ -7,8 +7,10 @@ import {
   anotarPunto,
   cargarResultadoDeMano,
   cancelarPartida,
+  corregirBloqueManualmente,
   crearRevancha,
   crearSiguienteEquipo,
+  type TipoDeBloque,
 } from "@/domain/partidas";
 
 // Una Server Action se puede invocar con un POST directo, sin pasar por el
@@ -17,6 +19,13 @@ import {
 function equipoValido(valor: unknown): 1 | 2 {
   if (valor !== 1 && valor !== 2) {
     throw new Error("Equipo inválido");
+  }
+  return valor;
+}
+
+function tipoDeBloqueValido(valor: unknown): TipoDeBloque {
+  if (valor !== "ronda" && valor !== "pica_pica") {
+    throw new Error("Tipo de Bloque inválido");
   }
   return valor;
 }
@@ -180,4 +189,36 @@ export async function cancelarPartidaAction(formData: FormData) {
 
   revalidatePath(`/grupos/${grupoId}/partidas/${partidaId}`);
   revalidatePath(`/grupos/${grupoId}`);
+}
+
+export type ResultadoCorregirBloque = { ok: true } | { ok: false; message: string };
+
+// Corrección manual del Bloque (ver CONTEXT.md/Bloque, ticket #21) — args
+// planos, no FormData: se llama directo desde marcador-en-vivo.tsx después
+// de forzar el flush de cualquier toque todavía pendiente (ver
+// corregirBloque en ese componente), para que la corrección nunca se le
+// aplique a la Mano equivocada. El badge de "Mano actual" sigue sin ser
+// optimista (ver ticket #20): se actualiza recién cuando revalidatePath
+// refresca el prop.
+export async function corregirBloqueAction(input: {
+  grupoId: string;
+  partidaId: string;
+  tipo: unknown;
+}): Promise<ResultadoCorregirBloque> {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+  const tipo = tipoDeBloqueValido(input.tipo);
+
+  try {
+    await corregirBloqueManualmente({ partidaId: input.partidaId, solicitanteId: session.user.id, tipo });
+  } catch (error) {
+    if (error instanceof Error) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/grupos/${input.grupoId}/partidas/${input.partidaId}`);
+  revalidatePath(`/grupos/${input.grupoId}`);
+  return { ok: true };
 }

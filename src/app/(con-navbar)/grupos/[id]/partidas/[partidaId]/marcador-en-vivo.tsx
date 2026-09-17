@@ -4,7 +4,12 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
 import type { TipoDeBloque } from "@/domain/partidas";
 import { FosforosTally } from "@/components/fosforos-tally";
-import { cargarResultadoDeManoAction, corregirPuntoAction } from "./actions";
+import {
+  cargarResultadoDeManoAction,
+  corregirPuntoAction,
+  corregirBloqueAction,
+  type ResultadoCorregirBloque,
+} from "./actions";
 
 const CORTE_MALAS_BUENAS = 15;
 const PUNTOS_PARA_GANAR = 30;
@@ -122,10 +127,25 @@ export function MarcadorEnVivo({
   // para forzar que la animación CSS arranque de cero (vía key).
   const [debounceActivo, setDebounceActivo] = useState(false);
   const [cicloDebounce, setCicloDebounce] = useState(0);
+  // Mientras una corrección de Bloque está en curso (desde que se pide
+  // hasta que el servidor responde), los botones "+"/"-" de los dos
+  // Equipos se deshabilitan (ver Marcador más abajo) — si no, un toque que
+  // entra justo en esa ventana arranca una Mano nueva que la propia
+  // corrección no espera, y termina flusheando contra el Bloque ya
+  // corregido en vez del que tenía cuando el Anotador la empezó a anotar
+  // (la misma clase de bug que el flush-before-correct de abajo previene
+  // para toques que ya estaban pendientes *antes* de pedir la corrección).
+  const [corrigiendoBloque, setCorrigiendoBloque] = useState(false);
   const [, startTransition] = useTransition();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const enVueloRef = useRef(false);
+  // Promesa del flush actualmente en vuelo, para que un llamador que
+  // necesita la garantía real de "ya no queda nada por mandar" (ver
+  // corregirBloque más abajo) pueda esperarla en vez de que
+  // flush() le devuelva un no-op inmediato mientras el anterior todavía
+  // está en curso.
+  const flushEnVueloPromiseRef = useRef<Promise<void> | null>(null);
   const yaRecuperoRef = useRef(false);
   const pendienteRef = useRef(pendiente);
   pendienteRef.current = pendiente;
@@ -143,72 +163,115 @@ export function MarcadorEnVivo({
     [partidaId],
   );
 
-  const flush = useCallback(async () => {
-    if (enVueloRef.current) return;
+  const flush = useCallback(async (): Promise<void> => {
+    if (enVueloRef.current) {
+      // Ya hay un flush en curso — esperarlo de verdad (no no-opear) y
+      // reintentar después: puede haber quedado algo pendiente nuevo
+      // mientras esperábamos, o el llamador (ver corregirBloque más abajo)
+      // necesita la garantía real de que ya no queda nada por mandar antes
+      // de seguir.
+      await flushEnVueloPromiseRef.current;
+      return flush();
+    }
+
     const snapshot = pendienteRef.current;
     if (snapshot.equipo1 === 0 && snapshot.equipo2 === 0) return;
 
     enVueloRef.current = true;
+    let liberar = () => {};
+    flushEnVueloPromiseRef.current = new Promise<void>((resolve) => {
+      liberar = resolve;
+    });
 
-    for (let intento = 0; ; intento += 1) {
-      try {
-        const resultado = await cargarResultadoDeManoAction({
-          grupoId,
-          partidaId,
-          deltaEquipo1: snapshot.equipo1,
-          deltaEquipo2: snapshot.equipo2,
-        });
+    try {
+      for (let intento = 0; ; intento += 1) {
+        try {
+          const resultado = await cargarResultadoDeManoAction({
+            grupoId,
+            partidaId,
+            deltaEquipo1: snapshot.equipo1,
+            deltaEquipo2: snapshot.equipo2,
+          });
 
-        if (!resultado.ok) {
-          // Rechazo de dominio limpio (ej. la Partida ya se cerró en otra
-          // pestaña) — no tiene sentido reintentar, y tampoco dejar este
-          // pendiente guardado: reintentaría para siempre (cada tap nuevo,
-          // cada reload) contra algo que nunca va a dejar de rechazarse.
-          setError(resultado.message);
-          actualizarPendiente(() => ({ equipo1: 0, equipo2: 0 }));
-          enVueloRef.current = false;
+          if (!resultado.ok) {
+            // Rechazo de dominio limpio (ej. la Partida ya se cerró en otra
+            // pestaña) — no tiene sentido reintentar, y tampoco dejar este
+            // pendiente guardado: reintentaría para siempre (cada tap nuevo,
+            // cada reload) contra algo que nunca va a dejar de rechazarse.
+            setError(resultado.message);
+            actualizarPendiente(() => ({ equipo1: 0, equipo2: 0 }));
+            return;
+          }
+
+          setError(null);
+          // Puntaje confirmado directo de la respuesta — no esperar al
+          // refresco del Server Component (ver comentario del useState de
+          // `confirmado` arriba).
+          setConfirmado({ equipo1: resultado.equipo1Puntos, equipo2: resultado.equipo2Puntos });
+          // `pendienteRef.current` recién se pone al día en el próximo
+          // render — leerlo acá, justo después de `actualizarPendiente`,
+          // daría un valor viejo. El propio callback de `setState` sí
+          // recibe el valor real y actual, así que de ahí sacamos si queda
+          // algo pendiente por mandar.
+          let quedaPendiente = false;
+          actualizarPendiente((anterior) => {
+            const nuevo = {
+              equipo1: anterior.equipo1 - snapshot.equipo1,
+              equipo2: anterior.equipo2 - snapshot.equipo2,
+            };
+            quedaPendiente = nuevo.equipo1 !== 0 || nuevo.equipo2 !== 0;
+            return nuevo;
+          });
+
+          // Toques que llegaron mientras este flush estaba en vuelo no se
+          // pierden (se restó solo el snapshot de arriba) — mandarlos ya
+          // mismo en vez de esperar un toque nuevo. Sin await: no hace
+          // falta que ESTE flush espere al siguiente, ya libera su lugar
+          // en el finally de abajo.
+          if (quedaPendiente) {
+            void flush();
+          }
+          return;
+        } catch {
+          if (intento < REINTENTOS_FLUSH) {
+            await esperar(BACKOFF_MS[intento]);
+            continue;
+          }
+          setError("No se pudo guardar la Mano. Volvé a tocar para reintentar.");
           return;
         }
-
-        setError(null);
-        // Puntaje confirmado directo de la respuesta — no esperar al
-        // refresco del Server Component (ver comentario del useState de
-        // `confirmado` arriba).
-        setConfirmado({ equipo1: resultado.equipo1Puntos, equipo2: resultado.equipo2Puntos });
-        // `pendienteRef.current` recién se pone al día en el próximo
-        // render — leerlo acá, justo después de `actualizarPendiente`,
-        // daría un valor viejo. El propio callback de `setState` sí
-        // recibe el valor real y actual, así que de ahí sacamos si queda
-        // algo pendiente por mandar.
-        let quedaPendiente = false;
-        actualizarPendiente((anterior) => {
-          const nuevo = {
-            equipo1: anterior.equipo1 - snapshot.equipo1,
-            equipo2: anterior.equipo2 - snapshot.equipo2,
-          };
-          quedaPendiente = nuevo.equipo1 !== 0 || nuevo.equipo2 !== 0;
-          return nuevo;
-        });
-        enVueloRef.current = false;
-
-        // Toques que llegaron mientras este flush estaba en vuelo no se
-        // pierden (se restó solo el snapshot de arriba) — mandarlos ya
-        // mismo en vez de esperar un toque nuevo.
-        if (quedaPendiente) {
-          void flush();
-        }
-        return;
-      } catch {
-        if (intento < REINTENTOS_FLUSH) {
-          await esperar(BACKOFF_MS[intento]);
-          continue;
-        }
-        setError("No se pudo guardar la Mano. Volvé a tocar para reintentar.");
-        enVueloRef.current = false;
-        return;
       }
+    } finally {
+      enVueloRef.current = false;
+      liberar();
     }
   }, [grupoId, partidaId, actualizarPendiente]);
+
+  const cortarDebounce = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setDebounceActivo(false);
+  }, []);
+
+  // Orquesta la corrección manual de Bloque completa (ver CorregirBloque
+  // más abajo): deshabilita los botones de puntaje del resto del
+  // componente por toda la duración de la operación (no solo mientras se
+  // resuelve el flush previo), corta cualquier debounce que hubiera
+  // quedado corriendo (el flush de abajo lo asienta igual, pero sin esto
+  // el indicador circular se queda pintando un ciclo que ya no tiene nada
+  // pendiente detrás) y recién ahí flushea y pide la corrección.
+  const corregirBloque = useCallback(
+    async (tipo: TipoDeBloque): Promise<ResultadoCorregirBloque> => {
+      setCorrigiendoBloque(true);
+      try {
+        cortarDebounce();
+        await flush();
+        return await corregirBloqueAction({ grupoId, partidaId, tipo });
+      } finally {
+        setCorrigiendoBloque(false);
+      }
+    },
+    [flush, grupoId, partidaId, cortarDebounce],
+  );
 
   // Al montar: recién acá se lee sessionStorage (solo corre en el cliente,
   // después de hidratar — ver el comentario del useState de arriba). Si
@@ -255,8 +318,7 @@ export function MarcadorEnVivo({
       // Llegar a 30 corta el debounce y flushea de inmediato — no tiene
       // sentido esperar una ventana de corrección para confirmar que la
       // Partida ya terminó (ver ADR 0005).
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      setDebounceActivo(false);
+      cortarDebounce();
       startTransition(() => {
         void flush();
       });
@@ -285,8 +347,7 @@ export function MarcadorEnVivo({
       } else {
         // Se canceló el último toque pendiente — no queda nada que
         // flushear, no tiene sentido seguir esperando.
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        setDebounceActivo(false);
+        cortarDebounce();
       }
       return;
     }
@@ -317,11 +378,14 @@ export function MarcadorEnVivo({
         )}
       </p>
 
+      <CorregirBloque onElegir={corregirBloque} />
+
       <div className="flex min-h-0 flex-1 justify-around gap-4">
         <Marcador
           miembros={equipo1.miembros}
           puntos={confirmado.equipo1 + pendiente.equipo1}
           equipo={1}
+          deshabilitado={corrigiendoBloque}
           onMas={() => tocarMas(1)}
           onMenos={() => tocarMenos(1)}
         />
@@ -329,6 +393,7 @@ export function MarcadorEnVivo({
           miembros={equipo2.miembros}
           puntos={confirmado.equipo2 + pendiente.equipo2}
           equipo={2}
+          deshabilitado={corrigiendoBloque}
           onMas={() => tocarMas(2)}
           onMenos={() => tocarMenos(2)}
         />
@@ -342,6 +407,72 @@ export function MarcadorEnVivo({
         </p>
       )}
     </>
+  );
+}
+
+// Corrección manual del Bloque (ver CONTEXT.md/Bloque, ticket #21). Toda
+// esta pantalla ya es exclusiva del Anotador (ver page.tsx), así que no
+// hace falta ningún chequeo de visibilidad extra acá.
+//
+// No usa <form action={...}> con useActionState (a diferencia de
+// EditarEstadisticas) porque necesita coordinarse con el debounce: si hay
+// toques todavía sin mandar (ver flush en MarcadorEnVivo) cuando se pide
+// la corrección, hay que mandarlos primero — si no, esa Mano pendiente se
+// termina cargando contra el Bloque *nuevo* (ya corregido) en vez del que
+// tenía cuando el Anotador la empezó a anotar. Toda esa orquestación (flush
+// previo + deshabilitar los botones de puntaje mientras dura) vive en
+// `onElegir` (ver corregirBloque en MarcadorEnVivo) — este componente solo
+// se ocupa de la UI y de su propio estado de pendiente/error.
+function CorregirBloque({ onElegir }: { onElegir: (tipo: TipoDeBloque) => Promise<ResultadoCorregirBloque> }) {
+  const [pendiente, setPendiente] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const corregir = async (tipo: TipoDeBloque) => {
+    setError(null);
+    setPendiente(true);
+    try {
+      const resultado = await onElegir(tipo);
+      if (!resultado.ok) {
+        setError(resultado.message);
+      }
+    } catch {
+      // onElegir puede rechazar (no solo devolver {ok:false}) si la propia
+      // request de red falla — sin este catch, este botón quedaba
+      // deshabilitado para siempre (setPendiente(false) nunca corría) y la
+      // promesa rechazada quedaba sin manejar.
+      setError("No se pudo aplicar la corrección. Volvé a intentar.");
+    } finally {
+      setPendiente(false);
+    }
+  };
+
+  return (
+    <details className="shrink-0">
+      <summary className="w-fit cursor-pointer list-none text-xs font-bold text-accent hover:text-accent-dark">
+        Corregir Mano actual
+      </summary>
+      <div className="mt-2 flex flex-col gap-2 rounded-2xl border-2 border-line bg-surface p-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => void corregir("ronda")}
+            disabled={pendiente}
+            className="flex-1 rounded-xl border-2 border-line bg-bg p-2 text-xs font-display font-bold text-ink disabled:opacity-50"
+          >
+            Ronda
+          </button>
+          <button
+            type="button"
+            onClick={() => void corregir("pica_pica")}
+            disabled={pendiente}
+            className="flex-1 rounded-xl border-2 border-line bg-bg p-2 text-xs font-display font-bold text-ink disabled:opacity-50"
+          >
+            Pica-pica
+          </button>
+        </div>
+        {error && <p className="text-xs font-bold text-danger">{error}</p>}
+      </div>
+    </details>
   );
 }
 
@@ -388,12 +519,14 @@ function Marcador({
   miembros,
   puntos,
   equipo,
+  deshabilitado,
   onMas,
   onMenos,
 }: {
   miembros: ParticipanteBasico[];
   puntos: number;
   equipo: 1 | 2;
+  deshabilitado?: boolean;
   onMas: () => void;
   onMenos: () => void;
 }) {
@@ -438,14 +571,16 @@ function Marcador({
         <button
           type="button"
           onClick={onMenos}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-line bg-surface text-xl font-bold text-ink shadow-pop-sm"
+          disabled={deshabilitado}
+          className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-line bg-surface text-xl font-bold text-ink shadow-pop-sm disabled:opacity-50"
         >
           −
         </button>
         <button
           type="button"
           onClick={onMas}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-xl font-bold text-white shadow-pop-accent-sm"
+          disabled={deshabilitado}
+          className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-xl font-bold text-white shadow-pop-accent-sm disabled:opacity-50"
         >
           +
         </button>
