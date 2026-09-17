@@ -31,9 +31,15 @@ export function calcularBloqueSiguiente(input: {
   equipo1Puntos: number;
   equipo2Puntos: number;
 }): { tipo: TipoDeBloque; manosJugadas: number } {
+  // "manosJugadas" cuenta las Manos de Pica-pica ya jugadas *antes* de la
+  // que se está cargando ahora — así que la Mano actual es la
+  // manosJugadas+1-ésima del Bloque. El Bloque se completa CON esta Mano
+  // (no en la llamada siguiente): comparar contra el valor ya incrementado
+  // es lo que detecta la 3ra Mano en el momento en que se carga, no una
+  // Mano más tarde.
   const bloqueEstaCompleto =
     input.tipoActual === "ronda" ||
-    (input.tipoActual === "pica_pica" && input.manosJugadas >= MANOS_POR_BLOQUE_PICA_PICA);
+    (input.tipoActual === "pica_pica" && input.manosJugadas + 1 >= MANOS_POR_BLOQUE_PICA_PICA);
 
   if (!bloqueEstaCompleto) {
     // Seguimos en el mismo Bloque de Pica-pica ya empezado — no se reevalúa

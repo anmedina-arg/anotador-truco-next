@@ -47,11 +47,23 @@ describe("calcularBloqueSiguiente", () => {
     ).toEqual({ tipo: "pica_pica", manosJugadas: 2 });
   });
 
-  it("alterna Ronda↔Pica-pica repetidamente dentro de la Fase alternada", () => {
-    // Pica-pica ya completó sus 3 Manos, con el puntaje todavía en la Fase
-    // alternada -> vuelve a Ronda.
+  it("el Bloque se completa CON la 3ra Mano (misma llamada), no una Mano después", () => {
+    // manosJugadas: 2 = van 2 Manos jugadas antes de esta -> la que se está
+    // cargando ahora es la 3ra. Tiene que reevaluar la Fase ya, en este
+    // mismo cálculo, sin necesitar una 4ta Mano para notar que el Bloque
+    // terminó.
     expect(
-      siguiente({ tipoActual: "pica_pica", manosJugadas: 3, equipo1Puntos: 8, equipo2Puntos: 3 }),
+      siguiente({ tipoActual: "pica_pica", manosJugadas: 2, equipo1Puntos: 3, equipo2Puntos: 1 }),
+    ).toEqual({ tipo: "ronda", manosJugadas: 0 }); // Fase inicial, max < umbralInicio
+  });
+
+  it("alterna Ronda↔Pica-pica repetidamente dentro de la Fase alternada", () => {
+    // manosJugadas: 2 = van 2 manos jugadas antes de esta -> esta es la 3ra,
+    // completa el Bloque de Pica-pica ya con esta Mano (no en la próxima
+    // llamada) -> con el puntaje todavía en la Fase alternada, vuelve a
+    // Ronda.
+    expect(
+      siguiente({ tipoActual: "pica_pica", manosJugadas: 2, equipo1Puntos: 8, equipo2Puntos: 3 }),
     ).toEqual({ tipo: "ronda", manosJugadas: 0 });
 
     // Ronda completa (siempre 1 Mano) en la Fase alternada -> vuelve a
@@ -62,21 +74,23 @@ describe("calcularBloqueSiguiente", () => {
 
     // Y de nuevo Ronda -> Pica-pica -> Ronda, mismo puntaje.
     expect(
-      siguiente({ tipoActual: "pica_pica", manosJugadas: 3, equipo1Puntos: 9, equipo2Puntos: 3 }),
+      siguiente({ tipoActual: "pica_pica", manosJugadas: 2, equipo1Puntos: 9, equipo2Puntos: 3 }),
     ).toEqual({ tipo: "ronda", manosJugadas: 0 });
   });
 
   it("termina el Bloque de Pica-pica en curso aunque el umbral de fin ya se haya cruzado a mitad de camino", () => {
-    // Va por la 2da Mano de un Pica-pica cuando el puntaje ya cruzó
-    // umbralFin (20) -- tiene que completar la 3ra Mano igual, sin cortar.
+    // Va por la 2da Mano de un Pica-pica (manosJugadas: 1 = ya jugó 1 antes)
+    // cuando el puntaje ya cruzó umbralFin (20) -- tiene que completar la
+    // 3ra Mano igual, sin cortar.
     expect(
       siguiente({ tipoActual: "pica_pica", manosJugadas: 1, equipo1Puntos: 22, equipo2Puntos: 3 }),
     ).toEqual({ tipo: "pica_pica", manosJugadas: 2 });
 
-    // Recién al completar esas 3 Manos (manosJugadas: 3) el cálculo nota que
-    // ya se cruzó umbralFin y pasa a la Fase final (Ronda fija).
+    // La 3ra Mano (manosJugadas: 2 = van 2 antes de esta) completa el
+    // Bloque con esta misma carga -- ahí nota que ya se cruzó umbralFin y
+    // pasa a la Fase final (Ronda fija), sin esperar una 4ta Mano.
     expect(
-      siguiente({ tipoActual: "pica_pica", manosJugadas: 3, equipo1Puntos: 22, equipo2Puntos: 3 }),
+      siguiente({ tipoActual: "pica_pica", manosJugadas: 2, equipo1Puntos: 22, equipo2Puntos: 3 }),
     ).toEqual({ tipo: "ronda", manosJugadas: 0 });
   });
 

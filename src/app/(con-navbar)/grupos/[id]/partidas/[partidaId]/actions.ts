@@ -21,17 +21,30 @@ function equipoValido(valor: unknown): 1 | 2 {
   return valor;
 }
 
+export type ResultadoCorregirPunto =
+  | { ok: true; equipo1Puntos: number; equipo2Puntos: number }
+  | { ok: false };
+
 // Corrige un punto ya confirmado de una Mano anterior (ver CONTEXT.md/Mano,
 // ADR 0005) — se llama directo desde el componente cliente del tanteador
 // (ver marcador-en-vivo.tsx), no por un <form>, así que recibe argumentos
-// planos en vez de FormData.
-export async function corregirPuntoAction(input: { grupoId: string; partidaId: string; equipo: 1 | 2 }) {
+// planos en vez de FormData. Devuelve el puntaje resultante para que el
+// cliente actualice su estado local ya mismo — esperar a que
+// revalidatePath refresque los props del Server Component deja una
+// ventana donde el puntaje mostrado vuelve por un instante al valor
+// viejo antes de ponerse al día (parpadeo).
+export async function corregirPuntoAction(input: {
+  grupoId: string;
+  partidaId: string;
+  equipo: 1 | 2;
+}): Promise<ResultadoCorregirPunto> {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const equipo = equipoValido(input.equipo);
 
+  let actualizada: Awaited<ReturnType<typeof anotarPunto>> | undefined;
   try {
-    await anotarPunto({
+    actualizada = await anotarPunto({
       partidaId: input.partidaId,
       solicitanteId: session.user.id,
       equipo,
@@ -46,16 +59,23 @@ export async function corregirPuntoAction(input: { grupoId: string; partidaId: s
 
   revalidatePath(`/grupos/${input.grupoId}/partidas/${input.partidaId}`);
   revalidatePath(`/grupos/${input.grupoId}`);
+
+  if (!actualizada) return { ok: false };
+  return { ok: true, equipo1Puntos: actualizada.equipo1Puntos, equipo2Puntos: actualizada.equipo2Puntos };
 }
 
-export type ResultadoCargarMano = { ok: true } | { ok: false; message: string };
+export type ResultadoCargarMano =
+  | { ok: true; equipo1Puntos: number; equipo2Puntos: number }
+  | { ok: false; message: string };
 
 // Carga el resultado de una Mano completa (ver CONTEXT.md/Mano, ADR 0005) —
 // el debounce del cliente ya decidió que la Mano terminó antes de llamar
 // esto. A diferencia del resto de las acciones de este archivo, esta
 // devuelve un resultado explícito: el cliente necesita distinguir un
 // rechazo de dominio limpio (no reintentar, ej. "no sos el Anotador") de
-// una falla de red real (reintentar con backoff) — ver marcador-en-vivo.tsx.
+// una falla de red real (reintentar con backoff), y necesita el puntaje
+// resultante para actualizar su estado local ya mismo (ver comentario de
+// corregirPuntoAction arriba) — ver marcador-en-vivo.tsx.
 export async function cargarResultadoDeManoAction(input: {
   grupoId: string;
   partidaId: string;
@@ -65,8 +85,9 @@ export async function cargarResultadoDeManoAction(input: {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
+  let actualizada: Awaited<ReturnType<typeof cargarResultadoDeMano>>;
   try {
-    await cargarResultadoDeMano({
+    actualizada = await cargarResultadoDeMano({
       partidaId: input.partidaId,
       solicitanteId: session.user.id,
       deltaEquipo1: input.deltaEquipo1,
@@ -81,7 +102,7 @@ export async function cargarResultadoDeManoAction(input: {
 
   revalidatePath(`/grupos/${input.grupoId}/partidas/${input.partidaId}`);
   revalidatePath(`/grupos/${input.grupoId}`);
-  return { ok: true };
+  return { ok: true, equipo1Puntos: actualizada.equipo1Puntos, equipo2Puntos: actualizada.equipo2Puntos };
 }
 
 export type EstadoRevancha = { message: string } | undefined;

@@ -19,6 +19,7 @@ const ROL_DE_EQUIPO: Record<1 | 2, { texto: string; colorClase: string }> = {
 };
 
 type Pendiente = { equipo1: number; equipo2: number };
+type Puntaje = { equipo1: number; equipo2: number };
 
 function claveStorage(partidaId: string) {
   return `truco:partida:${partidaId}:mano-pendiente`;
@@ -78,7 +79,27 @@ export function MarcadorEnVivo({
   equipo1: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
   equipo2: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
 }) {
-  const [pendiente, setPendiente] = useState<Pendiente>(() => leerPendienteGuardado(partidaId));
+  // Arranca en {0,0} tanto en el render server-side como en el primer
+  // render del cliente (nunca lee sessionStorage acá): si el inicializador
+  // leyera sessionStorage acá, el cliente podría arrancar con un valor
+  // distinto al que ya mandó el servidor en el HTML, y React tira un error
+  // de hidratación. La recuperación de sessionStorage pasa a un useEffect
+  // (ver más abajo), que solo corre en el cliente, después de hidratar.
+  const [pendiente, setPendiente] = useState<Pendiente>({ equipo1: 0, equipo2: 0 });
+  // Puntaje confirmado por el servidor. Arranca de los props (seguro para
+  // hidratar: server y cliente ven los mismos props en el primer render),
+  // pero DESPUÉS del mount se actualiza solo con lo que devuelve la propia
+  // Server Action al confirmar un flush/corrección — nunca desde los props.
+  // Si dependiera de los props, hay una ventana real entre que el estado
+  // local de "pendiente" ya se resetea (flush confirmado) y que
+  // revalidatePath termina de refrescar el Server Component: en esa
+  // ventana el puntaje mostrado vuelve un instante al valor viejo
+  // (confirmado-viejo + pendiente-ya-en-0) antes de saltar al nuevo —
+  // el parpadeo que se veía en la app real.
+  const [confirmado, setConfirmado] = useState<Puntaje>({
+    equipo1: equipo1.puntosConfirmados,
+    equipo2: equipo2.puntosConfirmados,
+  });
   const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -87,6 +108,8 @@ export function MarcadorEnVivo({
   const yaRecuperoRef = useRef(false);
   const pendienteRef = useRef(pendiente);
   pendienteRef.current = pendiente;
+  const confirmadoRef = useRef(confirmado);
+  confirmadoRef.current = confirmado;
 
   const actualizarPendiente = useCallback(
     (actualizar: (anterior: Pendiente) => Pendiente) => {
@@ -127,6 +150,10 @@ export function MarcadorEnVivo({
         }
 
         setError(null);
+        // Puntaje confirmado directo de la respuesta — no esperar al
+        // refresco del Server Component (ver comentario del useState de
+        // `confirmado` arriba).
+        setConfirmado({ equipo1: resultado.equipo1Puntos, equipo2: resultado.equipo2Puntos });
         // `pendienteRef.current` recién se pone al día en el próximo
         // render — leerlo acá, justo después de `actualizarPendiente`,
         // daría un valor viejo. El propio callback de `setState` sí
@@ -162,12 +189,17 @@ export function MarcadorEnVivo({
     }
   }, [grupoId, partidaId, actualizarPendiente]);
 
-  // Al montar: si quedó algo pendiente de una recarga anterior, mandarlo ya
-  // (sin esperar el debounce de nuevo — ver ADR 0005).
+  // Al montar: recién acá se lee sessionStorage (solo corre en el cliente,
+  // después de hidratar — ver el comentario del useState de arriba). Si
+  // quedó algo pendiente de una recarga anterior, se aplica y se manda ya
+  // mismo, sin esperar el debounce de nuevo (ver ADR 0005).
   useEffect(() => {
     if (yaRecuperoRef.current) return;
     yaRecuperoRef.current = true;
-    if (pendienteRef.current.equipo1 !== 0 || pendienteRef.current.equipo2 !== 0) {
+    const guardado = leerPendienteGuardado(partidaId);
+    if (guardado.equipo1 !== 0 || guardado.equipo2 !== 0) {
+      setPendiente(guardado);
+      pendienteRef.current = guardado;
       startTransition(() => {
         void flush();
       });
@@ -190,7 +222,7 @@ export function MarcadorEnVivo({
       num === 1 ? { ...anterior, equipo1: anterior.equipo1 + 1 } : { ...anterior, equipo2: anterior.equipo2 + 1 },
     );
 
-    const puntosConfirmados = num === 1 ? equipo1.puntosConfirmados : equipo2.puntosConfirmados;
+    const puntosConfirmados = num === 1 ? confirmadoRef.current.equipo1 : confirmadoRef.current.equipo2;
     const pendienteEquipo = num === 1 ? pendienteRef.current.equipo1 : pendienteRef.current.equipo2;
     if (puntosConfirmados + pendienteEquipo + 1 >= PUNTOS_PARA_GANAR) {
       // Llegar a 30 corta el debounce y flushea de inmediato — no tiene
@@ -224,7 +256,12 @@ export function MarcadorEnVivo({
     // corrección de un punto ya confirmado (ver CONTEXT.md/Mano) — acción
     // inmediata, sin debounce, nunca toca el Bloque.
     startTransition(() => {
-      void corregirPuntoAction({ grupoId, partidaId, equipo: num });
+      void (async () => {
+        const resultado = await corregirPuntoAction({ grupoId, partidaId, equipo: num });
+        if (resultado.ok) {
+          setConfirmado({ equipo1: resultado.equipo1Puntos, equipo2: resultado.equipo2Puntos });
+        }
+      })();
     });
   };
 
@@ -233,14 +270,14 @@ export function MarcadorEnVivo({
       <div className="flex min-h-0 flex-1 justify-around gap-4">
         <Marcador
           miembros={equipo1.miembros}
-          puntos={equipo1.puntosConfirmados + pendiente.equipo1}
+          puntos={confirmado.equipo1 + pendiente.equipo1}
           equipo={1}
           onMas={() => tocarMas(1)}
           onMenos={() => tocarMenos(1)}
         />
         <Marcador
           miembros={equipo2.miembros}
-          puntos={equipo2.puntosConfirmados + pendiente.equipo2}
+          puntos={confirmado.equipo2 + pendiente.equipo2}
           equipo={2}
           onMas={() => tocarMas(2)}
           onMenos={() => tocarMenos(2)}
