@@ -911,6 +911,48 @@ describe("cargarResultadoDeMano", () => {
       expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
     });
 
+    // Ticket #22: una Partida de un Grupo con umbrales propios tiene que
+    // alternar según esos valores, no según el default 5/20 — Grupo
+    // separado del que arma el beforeEach de este archivo, con su propia
+    // limpieza acá (el afterEach de arriba solo borra el Grupo default).
+    it("usa los umbrales propios del Grupo, no el default 5/20", async () => {
+      const [p0, p1, p2, p3, p4, p5] = participanteIds;
+      const db = getDb();
+      const grupoCustom = await crearGrupo({
+        nombre: "Grupo con umbrales propios",
+        adminParticipanteId: p0,
+        umbralInicioPicaPica: 2,
+        umbralFinPicaPica: 4,
+      });
+
+      try {
+        await db.insert(gruposParticipantesTable).values(
+          [p1, p2, p3, p4, p5].map((participanteId) => ({ grupoId: grupoCustom.id, participanteId })),
+        );
+        const partida = await crearPartida({
+          grupoId: grupoCustom.id,
+          anotadorParticipanteId: p0,
+          equipo1: [p0, p1, p2],
+          equipo2: [p3, p4, p5],
+        });
+
+        // Con el umbral default (5) esto seguiría en Ronda — con el umbral
+        // propio de este Grupo (2) ya tiene que cruzar a Pica-pica.
+        const actualizada = await cargarResultadoDeMano({
+          partidaId: partida.id,
+          solicitanteId: p0,
+          deltaEquipo1: 2,
+          deltaEquipo2: 0,
+        });
+
+        expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
+      } finally {
+        await db.delete(partidasTable).where(eq(partidasTable.grupoId, grupoCustom.id));
+        await db.delete(gruposParticipantesTable).where(eq(gruposParticipantesTable.grupoId, grupoCustom.id));
+        await db.delete(gruposTable).where(eq(gruposTable.id, grupoCustom.id));
+      }
+    });
+
     it("avanza manosJugadasEnBloqueActual a mitad de un Pica-pica sin reevaluar la Fase", async () => {
       const [p0] = participanteIds;
       const partida = await crearPartidaDePrueba();

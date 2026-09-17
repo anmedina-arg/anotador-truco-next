@@ -86,6 +86,69 @@ describe("crearGrupo", () => {
       crearGrupo({ nombre: "   ", adminParticipanteId: adminId }),
     ).rejects.toThrow("El Grupo necesita un nombre");
   });
+
+  it("usa los umbrales default (5 y 20) si no se pasan", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    expect(grupo.umbralInicioPicaPica).toBe(5);
+    expect(grupo.umbralFinPicaPica).toBe(20);
+  });
+
+  it("acepta umbrales explícitos válidos", async () => {
+    const grupo = await crearGrupo({
+      nombre: "Los viernes",
+      adminParticipanteId: adminId,
+      umbralInicioPicaPica: 3,
+      umbralFinPicaPica: 25,
+    });
+
+    expect(grupo.umbralInicioPicaPica).toBe(3);
+    expect(grupo.umbralFinPicaPica).toBe(25);
+  });
+
+  it("rechaza si el umbral de inicio es igual al de fin", async () => {
+    await expect(
+      crearGrupo({
+        nombre: "Los viernes",
+        adminParticipanteId: adminId,
+        umbralInicioPicaPica: 10,
+        umbralFinPicaPica: 10,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rechaza si el umbral de inicio es mayor al de fin", async () => {
+    await expect(
+      crearGrupo({
+        nombre: "Los viernes",
+        adminParticipanteId: adminId,
+        umbralInicioPicaPica: 15,
+        umbralFinPicaPica: 10,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rechaza un umbral de inicio menor a 1", async () => {
+    await expect(
+      crearGrupo({
+        nombre: "Los viernes",
+        adminParticipanteId: adminId,
+        umbralInicioPicaPica: 0,
+        umbralFinPicaPica: 20,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rechaza un umbral de fin de 30 o más", async () => {
+    await expect(
+      crearGrupo({
+        nombre: "Los viernes",
+        adminParticipanteId: adminId,
+        umbralInicioPicaPica: 5,
+        umbralFinPicaPica: 30,
+      }),
+    ).rejects.toThrow();
+  });
 });
 
 describe("listarGruposDeParticipante", () => {

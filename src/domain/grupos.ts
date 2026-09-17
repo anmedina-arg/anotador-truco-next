@@ -70,13 +70,38 @@ async function requerirAdmin(grupoId: string, solicitanteId: string) {
   return grupo;
 }
 
+// Defaults y rango válido de los umbrales de Pica-pica (ver CONTEXT.md:
+// Fase, ticket #22, ADR 0004) — se fijan solo acá, al crear el Grupo: no
+// hay ninguna operación de dominio que los actualice después.
+const UMBRAL_INICIO_PICA_PICA_DEFAULT = 5;
+const UMBRAL_FIN_PICA_PICA_DEFAULT = 20;
+const UMBRAL_INICIO_PICA_PICA_MIN = 1;
+const UMBRAL_FIN_PICA_PICA_MAX = 29;
+
 export async function crearGrupo(input: {
   nombre: string;
   adminParticipanteId: string;
+  umbralInicioPicaPica?: number;
+  umbralFinPicaPica?: number;
 }) {
   const nombre = input.nombre.trim();
   if (!nombre) {
     throw new Error("El Grupo necesita un nombre");
+  }
+
+  const umbralInicioPicaPica = input.umbralInicioPicaPica ?? UMBRAL_INICIO_PICA_PICA_DEFAULT;
+  const umbralFinPicaPica = input.umbralFinPicaPica ?? UMBRAL_FIN_PICA_PICA_DEFAULT;
+
+  if (
+    !Number.isInteger(umbralInicioPicaPica) ||
+    !Number.isInteger(umbralFinPicaPica) ||
+    umbralInicioPicaPica < UMBRAL_INICIO_PICA_PICA_MIN ||
+    umbralFinPicaPica > UMBRAL_FIN_PICA_PICA_MAX ||
+    umbralInicioPicaPica >= umbralFinPicaPica
+  ) {
+    throw new Error(
+      `El umbral de inicio de Pica-pica tiene que ser un número entero entre ${UMBRAL_INICIO_PICA_PICA_MIN} y ${UMBRAL_FIN_PICA_PICA_MAX - 1}, y menor al umbral de fin (que como máximo puede ser ${UMBRAL_FIN_PICA_PICA_MAX})`,
+    );
   }
 
   const db = getDb();
@@ -89,6 +114,8 @@ export async function crearGrupo(input: {
           nombre,
           adminParticipanteId: input.adminParticipanteId,
           codigoInvitacion: generarCodigoInvitacion(),
+          umbralInicioPicaPica,
+          umbralFinPicaPica,
         })
         .returning();
       return fila;
