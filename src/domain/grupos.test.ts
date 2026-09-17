@@ -8,11 +8,14 @@ import {
   listarGruposDeParticipante,
   listarMiembrosDeGrupo,
   obtenerGrupoMasActivoDeParticipante,
+  obtenerGrupoPorId,
   unirseAGrupo,
   regenerarCodigoInvitacion,
   sacarMiembro,
   actualizarEstadisticas,
+  actualizarVentanaInactividad,
   EstadisticasInvalidasError,
+  VentanaInactividadInvalidaError,
 } from "./grupos";
 
 const emailAdmin = "test-grupos-admin@example.com";
@@ -391,5 +394,74 @@ describe("actualizarEstadisticas", () => {
         partidasGanadasTriples: 0,
       }),
     ).rejects.toThrow("Solo el admin del Grupo puede hacer esto");
+  });
+});
+
+describe("actualizarVentanaInactividad", () => {
+  it("el admin puede actualizar la ventana de inactividad", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    await actualizarVentanaInactividad({
+      grupoId: grupo.id,
+      solicitanteId: adminId,
+      ventanaInactividadSegundos: 30,
+    });
+
+    const actualizado = await obtenerGrupoPorId(grupo.id);
+    expect(actualizado?.ventanaInactividadSegundos).toBe(30);
+  });
+
+  it("rechaza si quien lo pide no es el admin", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    await expect(
+      actualizarVentanaInactividad({
+        grupoId: grupo.id,
+        solicitanteId: ajenoId,
+        ventanaInactividadSegundos: 30,
+      }),
+    ).rejects.toThrow("Solo el admin del Grupo puede hacer esto");
+  });
+
+  it("rechaza un valor menor a 5", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    await expect(
+      actualizarVentanaInactividad({
+        grupoId: grupo.id,
+        solicitanteId: adminId,
+        ventanaInactividadSegundos: 4,
+      }),
+    ).rejects.toThrow(VentanaInactividadInvalidaError);
+  });
+
+  it("rechaza un valor mayor a 60", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    await expect(
+      actualizarVentanaInactividad({
+        grupoId: grupo.id,
+        solicitanteId: adminId,
+        ventanaInactividadSegundos: 61,
+      }),
+    ).rejects.toThrow(VentanaInactividadInvalidaError);
+  });
+
+  it("acepta los límites del rango, 5 y 60", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    await actualizarVentanaInactividad({
+      grupoId: grupo.id,
+      solicitanteId: adminId,
+      ventanaInactividadSegundos: 5,
+    });
+    await actualizarVentanaInactividad({
+      grupoId: grupo.id,
+      solicitanteId: adminId,
+      ventanaInactividadSegundos: 60,
+    });
+
+    const actualizado = await obtenerGrupoPorId(grupo.id);
+    expect(actualizado?.ventanaInactividadSegundos).toBe(60);
   });
 });

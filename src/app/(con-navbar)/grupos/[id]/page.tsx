@@ -13,6 +13,7 @@ import { nombresDeEquipo, inicialesDeParticipante } from "@/domain/participantes
 import { sacarMiembroAction } from "./actions";
 import { Invitar } from "./invitar";
 import { EditarEstadisticas } from "./editar-estadisticas";
+import { EditarVentanaInactividad } from "./editar-ventana-inactividad";
 
 export default async function GrupoDetallePage({
   params,
@@ -57,6 +58,12 @@ export default async function GrupoDetallePage({
       </div>
 
       {esAdmin && <Invitar grupoId={grupo.id} codigo={grupo.codigoInvitacion} />}
+      {esAdmin && (
+        <EditarVentanaInactividad
+          grupoId={grupo.id}
+          ventanaInactividadSegundos={grupo.ventanaInactividadSegundos}
+        />
+      )}
 
       <section className="flex flex-col gap-2">
         <div className="flex items-center justify-between">

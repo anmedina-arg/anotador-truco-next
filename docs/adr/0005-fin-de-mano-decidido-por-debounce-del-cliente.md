@@ -53,9 +53,21 @@ vez de intentar prevenirla.
 - El campo que persiste el último punto anotado por Partida deja de
   decidir nada — queda como dato informativo, sin la columna eliminada.
 - La ventana de inactividad del Grupo (ver `CONTEXT.md`: Grupo) sigue
-  siendo la misma configuración de siempre — solo cambia dónde se aplica
-  (debounce del cliente en vez de comparación server-side); el motivo por
-  el que es editable por el admin en cualquier momento no cambia.
+  siendo la misma configuración de siempre, editable por el admin en
+  cualquier momento — pero **dónde** se aplica cambió, y eso le pone un
+  límite nuevo a "en cualquier momento" que la historia de usuario 14 del
+  ticket #19 no contemplaba: `page.tsx` le pasa el valor a
+  `MarcadorEnVivo` como prop, leído fresco de la base en cada carga de
+  esa pantalla (ver ticket #23) — así que una Partida `en_curso` nunca
+  queda con un valor viejo *congelado en la base*. Pero el debounce corre
+  enteramente en el cliente con el valor que le llegó al montar: una
+  pestaña que ya tenía el tanteador abierto no se entera sola de un
+  cambio del admin hasta que se recarga, porque esta app evita a
+  propósito cualquier polling/timer en el cliente para este tipo de
+  actualización (mismo principio que el badge de Bloque, que tampoco se
+  actualiza solo — ver ticket #20). Riesgo aceptado explícitamente al
+  implementar el ticket #23, documentado ahí en vez de agregar un
+  mecanismo de push.
 - La recuperación por dispositivo es *al menos una vez*, no exactamente
   una: si el servidor ya confirmó un envío pero la respuesta se pierde
   (la pestaña se cierra justo después, antes de que llegue), una recarga

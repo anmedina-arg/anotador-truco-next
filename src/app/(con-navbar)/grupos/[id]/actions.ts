@@ -8,9 +8,11 @@ import {
   sacarMiembro,
   agregarMiembroPorEmail,
   actualizarEstadisticas,
+  actualizarVentanaInactividad,
   ParticipanteNoEncontradoError,
   YaEsMiembroError,
   EstadisticasInvalidasError,
+  VentanaInactividadInvalidaError,
 } from "@/domain/grupos";
 
 export async function regenerarCodigoInvitacionAction(formData: FormData) {
@@ -88,6 +90,35 @@ export async function actualizarEstadisticasAction(
     });
   } catch (error) {
     if (error instanceof EstadisticasInvalidasError) {
+      return { message: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/grupos/${grupoId}`);
+  return undefined;
+}
+
+export type EstadoEditarVentanaInactividad = { message: string } | undefined;
+
+export async function actualizarVentanaInactividadAction(
+  _estadoPrevio: EstadoEditarVentanaInactividad,
+  formData: FormData,
+): Promise<EstadoEditarVentanaInactividad> {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  const grupoId = String(formData.get("grupoId") ?? "");
+  const ventanaInactividadSegundos = Number(formData.get("ventanaInactividadSegundos"));
+
+  try {
+    await actualizarVentanaInactividad({
+      grupoId,
+      solicitanteId: session.user.id,
+      ventanaInactividadSegundos,
+    });
+  } catch (error) {
+    if (error instanceof VentanaInactividadInvalidaError) {
       return { message: error.message };
     }
     throw error;

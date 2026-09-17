@@ -31,6 +31,13 @@ export class EstadisticasInvalidasError extends Error {
   }
 }
 
+export class VentanaInactividadInvalidaError extends Error {
+  constructor(mensaje: string) {
+    super(mensaje);
+    this.name = "VentanaInactividadInvalidaError";
+  }
+}
+
 function generarCodigoInvitacion() {
   return randomBytes(6).toString("base64url");
 }
@@ -489,4 +496,43 @@ export async function actualizarEstadisticas(input: {
   if (actualizado.length === 0) {
     throw new Error("Ese Participante no es miembro del Grupo");
   }
+}
+
+const VENTANA_INACTIVIDAD_MIN = 5;
+const VENTANA_INACTIVIDAD_MAX = 60;
+
+// A diferencia de los umbrales de Pica-pica (ver crearGrupo, ADR 0004), la
+// ventana de inactividad sí es editable por el admin en cualquier momento
+// (ticket #23) — vive en `grupo`, no se copia a la Partida, así que un
+// Anotador que recarga la pantalla del tanteador ya ve el valor nuevo (ver
+// obtenerGrupoPorId en page.tsx). Una pestaña que ya tenía el tanteador
+// abierto NO se entera sola del cambio hasta que recarga: el debounce corre
+// enteramente en el cliente con el valor que le llegó al montar, sin
+// polling (ver ADR 0005, "Consecuencias" — riesgo aceptado a propósito).
+export async function actualizarVentanaInactividad(input: {
+  grupoId: string;
+  solicitanteId: string;
+  ventanaInactividadSegundos: number;
+}) {
+  await requerirAdmin(input.grupoId, input.solicitanteId);
+
+  const { ventanaInactividadSegundos } = input;
+  if (
+    !Number.isInteger(ventanaInactividadSegundos) ||
+    ventanaInactividadSegundos < VENTANA_INACTIVIDAD_MIN ||
+    ventanaInactividadSegundos > VENTANA_INACTIVIDAD_MAX
+  ) {
+    throw new VentanaInactividadInvalidaError(
+      `La ventana de inactividad tiene que ser un número entero entre ${VENTANA_INACTIVIDAD_MIN} y ${VENTANA_INACTIVIDAD_MAX} segundos`,
+    );
+  }
+
+  const db = getDb();
+  const [actualizado] = await db
+    .update(gruposTable)
+    .set({ ventanaInactividadSegundos })
+    .where(eq(gruposTable.id, input.grupoId))
+    .returning();
+
+  return actualizado;
 }
