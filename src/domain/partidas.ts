@@ -8,11 +8,18 @@ import {
   gruposParticipantesTable,
   partidasTable,
   partidasParticipantesTable,
+  picaPicaParejaTable,
 } from "../db/schema";
 
 const PUNTOS_PARA_GANAR = 30;
 
 export type TipoDeBloque = "ronda" | "pica_pica";
+
+// Pareja fija de Pica-pica (ver CONTEXT.md/Pica-pica, ADR 0006): quién de
+// Equipo 1 enfrenta a quién de Equipo 2 en los Bloques de Pica-pica de una
+// Partida. Se decide al crear la Partida (crearPartida) y no se puede
+// derivar del orden de los arrays de equipo1/equipo2 — se guarda explícita.
+export type ParejaPicaPica = { jugadorEquipo1Id: string; jugadorEquipo2Id: string };
 
 const MANOS_POR_BLOQUE_PICA_PICA = 3;
 
@@ -75,6 +82,7 @@ export async function crearPartida(input: {
   anotadorParticipanteId: string;
   equipo1: string[];
   equipo2: string[];
+  picaPicaParejas: ParejaPicaPica[];
 }) {
   if (input.equipo1.length !== 3 || input.equipo2.length !== 3) {
     throw new Error("Cada Equipo necesita exactamente 3 Participantes");
@@ -91,6 +99,27 @@ export async function crearPartida(input: {
 
   if (!participantes.includes(input.anotadorParticipanteId)) {
     throw new Error("El Anotador tiene que ser uno de los 6 Participantes de la Partida");
+  }
+
+  // Las parejas de Pica-pica (ver ADR 0006) tienen que ser una asignación 1
+  // a 1 completa entre los 3 de Equipo 1 y los 3 de Equipo 2 — comparar los
+  // multiconjuntos ordenados alcanza para detectar cualquiera de los 3
+  // errores posibles a la vez (menos/más de 3 parejas, un Participante
+  // repetido entre parejas, o uno que no pertenece al Equipo que dice
+  // representar), porque Equipo 1/Equipo 2 ya se validaron arriba como
+  // conjuntos de 3 sin repetidos.
+  if (input.picaPicaParejas.length !== 3) {
+    throw new Error("Las parejas de Pica-pica tienen que ser exactamente 3");
+  }
+  const jugadoresEquipo1DeParejas = input.picaPicaParejas.map((p) => p.jugadorEquipo1Id).sort();
+  const jugadoresEquipo2DeParejas = input.picaPicaParejas.map((p) => p.jugadorEquipo2Id).sort();
+  if (
+    jugadoresEquipo1DeParejas.join() !== [...input.equipo1].sort().join() ||
+    jugadoresEquipo2DeParejas.join() !== [...input.equipo2].sort().join()
+  ) {
+    throw new Error(
+      "Las parejas de Pica-pica tienen que emparejar 1 a 1 a los 3 Participantes de cada Equipo, sin repetidos",
+    );
   }
 
   const db = getDb();
@@ -147,17 +176,27 @@ export async function crearPartida(input: {
       .values({ grupoId: input.grupoId, anotadorParticipanteId: input.anotadorParticipanteId })
       .returning();
 
-    await tx.insert(partidasParticipantesTable).values([
-      ...input.equipo1.map((participanteId) => ({
-        partidaId: partida.id,
-        participanteId,
-        equipoNumero: 1,
-      })),
-      ...input.equipo2.map((participanteId) => ({
-        partidaId: partida.id,
-        participanteId,
-        equipoNumero: 2,
-      })),
+    await Promise.all([
+      tx.insert(partidasParticipantesTable).values([
+        ...input.equipo1.map((participanteId) => ({
+          partidaId: partida.id,
+          participanteId,
+          equipoNumero: 1,
+        })),
+        ...input.equipo2.map((participanteId) => ({
+          partidaId: partida.id,
+          participanteId,
+          equipoNumero: 2,
+        })),
+      ]),
+      tx.insert(picaPicaParejaTable).values(
+        input.picaPicaParejas.map((pareja, indice) => ({
+          partidaId: partida.id,
+          posicion: indice + 1,
+          jugadorEquipo1Id: pareja.jugadorEquipo1Id,
+          jugadorEquipo2Id: pareja.jugadorEquipo2Id,
+        })),
+      ),
     ]);
 
     return partida;
@@ -186,22 +225,45 @@ async function obtenerPartidaFinalizadaDelAnotador(
   return partida;
 }
 
+// Parejas fijas de Pica-pica de una Partida (ver ADR 0006), en orden de
+// posicion — así cargarResultadoDeMano (ticket #27) puede indexarlas
+// directo por "manosJugadasEnBloqueActual", y crearRevancha puede copiarlas
+// tal cual a la Partida nueva sin tener que reconstruirlas.
+async function obtenerParejasPicaPica(partidaId: string): Promise<ParejaPicaPica[]> {
+  const db = getDb();
+
+  const filas = await db
+    .select({
+      jugadorEquipo1Id: picaPicaParejaTable.jugadorEquipo1Id,
+      jugadorEquipo2Id: picaPicaParejaTable.jugadorEquipo2Id,
+    })
+    .from(picaPicaParejaTable)
+    .where(eq(picaPicaParejaTable.partidaId, partidaId))
+    .orderBy(picaPicaParejaTable.posicion);
+
+  return filas;
+}
+
 // Repite la última Partida con un tap (ticket #12): mismos 6 Participantes,
-// misma división de Equipos y mismo Anotador que la Partida finalizada de
-// referencia, arrancando 0-0. Sin validaciones propias más allá de leer la
-// Partida original — delega en crearPartida para no duplicar sus reglas
-// (3+3, sin repetidos, exclusividad).
+// misma división de Equipos, mismo Anotador y las mismas parejas de
+// Pica-pica (ver ADR 0006) que la Partida finalizada de referencia,
+// arrancando 0-0. Sin validaciones propias más allá de leer la Partida
+// original — delega en crearPartida para no duplicar sus reglas (3+3, sin
+// repetidos, exclusividad, parejas).
 export async function crearRevancha(input: { partidaId: string; solicitanteId: string }) {
   const partida = await obtenerPartidaFinalizadaDelAnotador(input.partidaId, input.solicitanteId, {
     noFinalizada: "Solo se puede pedir Revancha de una Partida finalizada",
     noAnotador: "Solo el Anotador de la Partida puede pedir Revancha",
   });
 
+  const picaPicaParejas = await obtenerParejasPicaPica(partida.id);
+
   return crearPartida({
     grupoId: partida.grupoId,
     anotadorParticipanteId: partida.anotadorParticipanteId,
     equipo1: partida.equipo1.map((p) => p.participanteId),
     equipo2: partida.equipo2.map((p) => p.participanteId),
+    picaPicaParejas,
   });
 }
 
@@ -213,12 +275,16 @@ export async function crearRevancha(input: { partidaId: string; solicitanteId: s
 // entre los 6 finales — la única excepción a "el Anotador se asigna
 // automáticamente a quien crea la Partida, sin transferencia" (ver
 // CONTEXT.md/issue #1), acotada a este flujo. Delega en crearPartida para
-// las reglas de siempre (3+3, sin repetidos, exclusividad).
+// las reglas de siempre (3+3, sin repetidos, exclusividad) — a diferencia de
+// crearRevancha, acá las parejas de Pica-pica (ver ADR 0006) no se copian de
+// ningún lado: el Equipo desafiante es gente nueva, así que quien llama
+// tiene que mandarlas armadas de cero.
 export async function crearSiguienteEquipo(input: {
   partidaId: string;
   solicitanteId: string;
   equipoDesafiante: string[];
   nuevoAnotadorParticipanteId?: string;
+  picaPicaParejas: ParejaPicaPica[];
 }) {
   const partida = await obtenerPartidaFinalizadaDelAnotador(input.partidaId, input.solicitanteId, {
     noFinalizada: "Solo se puede armar el Siguiente equipo desde una Partida finalizada",
@@ -250,6 +316,7 @@ export async function crearSiguienteEquipo(input: {
     anotadorParticipanteId,
     equipo1: equipoGanadorIds,
     equipo2: input.equipoDesafiante,
+    picaPicaParejas: input.picaPicaParejas,
   });
 }
 

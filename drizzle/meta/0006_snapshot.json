@@ -1,0 +1,769 @@
+{
+  "id": "0e8132d6-259a-4f89-8683-919fa214a41a",
+  "prevId": "684f352a-bf56-49d8-be3b-9685c88de74a",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.account": {
+      "name": "account",
+      "schema": "",
+      "columns": {
+        "userId": {
+          "name": "userId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "providerAccountId": {
+          "name": "providerAccountId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "refresh_token": {
+          "name": "refresh_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "access_token": {
+          "name": "access_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "token_type": {
+          "name": "token_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "scope": {
+          "name": "scope",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "id_token": {
+          "name": "id_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "session_state": {
+          "name": "session_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "account_userId_user_id_fk": {
+          "name": "account_userId_user_id_fk",
+          "tableFrom": "account",
+          "tableTo": "user",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "account_provider_providerAccountId_pk": {
+          "name": "account_provider_providerAccountId_pk",
+          "columns": [
+            "provider",
+            "providerAccountId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.grupo_participante": {
+      "name": "grupo_participante",
+      "schema": "",
+      "columns": {
+        "grupoId": {
+          "name": "grupoId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "participanteId": {
+          "name": "participanteId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fechaAlta": {
+          "name": "fechaAlta",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "puntos": {
+          "name": "puntos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "partidasJugadas": {
+          "name": "partidasJugadas",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "partidasGanadas": {
+          "name": "partidasGanadas",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "partidasGanadasDobles": {
+          "name": "partidasGanadasDobles",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "partidasGanadasTriples": {
+          "name": "partidasGanadasTriples",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "partidasPerdidas": {
+          "name": "partidasPerdidas",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "grupo_participante_grupoId_grupo_id_fk": {
+          "name": "grupo_participante_grupoId_grupo_id_fk",
+          "tableFrom": "grupo_participante",
+          "tableTo": "grupo",
+          "columnsFrom": [
+            "grupoId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "grupo_participante_participanteId_user_id_fk": {
+          "name": "grupo_participante_participanteId_user_id_fk",
+          "tableFrom": "grupo_participante",
+          "tableTo": "user",
+          "columnsFrom": [
+            "participanteId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "grupo_participante_grupoId_participanteId_pk": {
+          "name": "grupo_participante_grupoId_participanteId_pk",
+          "columns": [
+            "grupoId",
+            "participanteId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.grupo": {
+      "name": "grupo",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nombre": {
+          "name": "nombre",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adminParticipanteId": {
+          "name": "adminParticipanteId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "codigoInvitacion": {
+          "name": "codigoInvitacion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "creadoEn": {
+          "name": "creadoEn",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "umbralInicioPicaPica": {
+          "name": "umbralInicioPicaPica",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 5
+        },
+        "umbralFinPicaPica": {
+          "name": "umbralFinPicaPica",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 20
+        },
+        "ventanaInactividadSegundos": {
+          "name": "ventanaInactividadSegundos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "grupo_adminParticipanteId_user_id_fk": {
+          "name": "grupo_adminParticipanteId_user_id_fk",
+          "tableFrom": "grupo",
+          "tableTo": "user",
+          "columnsFrom": [
+            "adminParticipanteId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "grupo_codigoInvitacion_unique": {
+          "name": "grupo_codigoInvitacion_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "codigoInvitacion"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.partida_participante": {
+      "name": "partida_participante",
+      "schema": "",
+      "columns": {
+        "partidaId": {
+          "name": "partidaId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "participanteId": {
+          "name": "participanteId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "equipoNumero": {
+          "name": "equipoNumero",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partida_participante_partidaId_partida_id_fk": {
+          "name": "partida_participante_partidaId_partida_id_fk",
+          "tableFrom": "partida_participante",
+          "tableTo": "partida",
+          "columnsFrom": [
+            "partidaId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "partida_participante_participanteId_user_id_fk": {
+          "name": "partida_participante_participanteId_user_id_fk",
+          "tableFrom": "partida_participante",
+          "tableTo": "user",
+          "columnsFrom": [
+            "participanteId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "partida_participante_partidaId_participanteId_pk": {
+          "name": "partida_participante_partidaId_participanteId_pk",
+          "columns": [
+            "partidaId",
+            "participanteId"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "equipo_numero_valido": {
+          "name": "equipo_numero_valido",
+          "value": "\"partida_participante\".\"equipoNumero\" IN (1, 2)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.partida": {
+      "name": "partida",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "grupoId": {
+          "name": "grupoId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "anotadorParticipanteId": {
+          "name": "anotadorParticipanteId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "estado": {
+          "name": "estado",
+          "type": "estado_partida",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'en_curso'"
+        },
+        "equipo1Puntos": {
+          "name": "equipo1Puntos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "equipo2Puntos": {
+          "name": "equipo2Puntos",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "equipoGanador": {
+          "name": "equipoGanador",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fechaInicio": {
+          "name": "fechaInicio",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "fechaFin": {
+          "name": "fechaFin",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tipoDeBloqueActual": {
+          "name": "tipoDeBloqueActual",
+          "type": "tipo_de_bloque",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ronda'"
+        },
+        "manosJugadasEnBloqueActual": {
+          "name": "manosJugadasEnBloqueActual",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "ultimoPuntoAnotadoEn": {
+          "name": "ultimoPuntoAnotadoEn",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "partida_grupoId_grupo_id_fk": {
+          "name": "partida_grupoId_grupo_id_fk",
+          "tableFrom": "partida",
+          "tableTo": "grupo",
+          "columnsFrom": [
+            "grupoId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "partida_anotadorParticipanteId_user_id_fk": {
+          "name": "partida_anotadorParticipanteId_user_id_fk",
+          "tableFrom": "partida",
+          "tableTo": "user",
+          "columnsFrom": [
+            "anotadorParticipanteId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "equipo1_puntos_rango": {
+          "name": "equipo1_puntos_rango",
+          "value": "\"partida\".\"equipo1Puntos\" BETWEEN 0 AND 30"
+        },
+        "equipo2_puntos_rango": {
+          "name": "equipo2_puntos_rango",
+          "value": "\"partida\".\"equipo2Puntos\" BETWEEN 0 AND 30"
+        },
+        "equipo_ganador_valido": {
+          "name": "equipo_ganador_valido",
+          "value": "\"partida\".\"equipoGanador\" IN (1, 2)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.pica_pica_pareja": {
+      "name": "pica_pica_pareja",
+      "schema": "",
+      "columns": {
+        "partidaId": {
+          "name": "partidaId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "posicion": {
+          "name": "posicion",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jugadorEquipo1Id": {
+          "name": "jugadorEquipo1Id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "jugadorEquipo2Id": {
+          "name": "jugadorEquipo2Id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pica_pica_pareja_partidaId_partida_id_fk": {
+          "name": "pica_pica_pareja_partidaId_partida_id_fk",
+          "tableFrom": "pica_pica_pareja",
+          "tableTo": "partida",
+          "columnsFrom": [
+            "partidaId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "pica_pica_pareja_jugadorEquipo1Id_user_id_fk": {
+          "name": "pica_pica_pareja_jugadorEquipo1Id_user_id_fk",
+          "tableFrom": "pica_pica_pareja",
+          "tableTo": "user",
+          "columnsFrom": [
+            "jugadorEquipo1Id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "pica_pica_pareja_jugadorEquipo2Id_user_id_fk": {
+          "name": "pica_pica_pareja_jugadorEquipo2Id_user_id_fk",
+          "tableFrom": "pica_pica_pareja",
+          "tableTo": "user",
+          "columnsFrom": [
+            "jugadorEquipo2Id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "pica_pica_pareja_partidaId_posicion_pk": {
+          "name": "pica_pica_pareja_partidaId_posicion_pk",
+          "columns": [
+            "partidaId",
+            "posicion"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "posicion_valida": {
+          "name": "posicion_valida",
+          "value": "\"pica_pica_pareja\".\"posicion\" IN (1, 2, 3)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.session": {
+      "name": "session",
+      "schema": "",
+      "columns": {
+        "sessionToken": {
+          "name": "sessionToken",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "userId": {
+          "name": "userId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires": {
+          "name": "expires",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "session_userId_user_id_fk": {
+          "name": "session_userId_user_id_fk",
+          "tableFrom": "session",
+          "tableTo": "user",
+          "columnsFrom": [
+            "userId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.user": {
+      "name": "user",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "emailVerified": {
+          "name": "emailVerified",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image": {
+          "name": "image",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "passwordHash": {
+          "name": "passwordHash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "user_email_unique": {
+          "name": "user_email_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "email"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.verificationToken": {
+      "name": "verificationToken",
+      "schema": "",
+      "columns": {
+        "identifier": {
+          "name": "identifier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token": {
+          "name": "token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires": {
+          "name": "expires",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "verificationToken_identifier_token_pk": {
+          "name": "verificationToken_identifier_token_pk",
+          "columns": [
+            "identifier",
+            "token"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {
+    "public.estado_partida": {
+      "name": "estado_partida",
+      "schema": "public",
+      "values": [
+        "en_curso",
+        "finalizada",
+        "cancelada"
+      ]
+    },
+    "public.tipo_de_bloque": {
+      "name": "tipo_de_bloque",
+      "schema": "public",
+      "values": [
+        "ronda",
+        "pica_pica"
+      ]
+    }
+  },
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

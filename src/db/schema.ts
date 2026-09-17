@@ -195,3 +195,34 @@ export const partidasParticipantesTable = pgTable(
     check("equipo_numero_valido", sql`${pp.equipoNumero} IN (1, 2)`),
   ],
 );
+
+// pica_pica_pareja (ver CONTEXT.md/Pica-pica, ticket #25): emparejamiento
+// fijo 1 a 1 entre los 3 Participantes de Equipo 1 y los 3 de Equipo 2 para
+// los Bloques de Pica-pica de una Partida. Se decide una sola vez al crear
+// la Partida (crearPartida) — o se copia automáticamente de la Partida de
+// referencia en una Revancha — y no cambia durante toda la Partida, ni
+// siquiera si la Fase alternada vuelve a Pica-pica más de una vez (ver ADR
+// 0006). "posicion" (1/2/3) es lo que le va a decir a cargarResultadoDeMano
+// qué pareja le toca jugar cada Mano dentro de un Bloque de Pica-pica.
+export const picaPicaParejaTable = pgTable(
+  "pica_pica_pareja",
+  {
+    partidaId: text("partidaId")
+      .notNull()
+      .references(() => partidasTable.id, { onDelete: "cascade" }),
+    posicion: integer("posicion").notNull(),
+    // "restrict": mismo criterio que partida_participante — es historial de
+    // quién jugó, no debería desaparecer en cascada solo porque el usuario
+    // se borró.
+    jugadorEquipo1Id: text("jugadorEquipo1Id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    jugadorEquipo2Id: text("jugadorEquipo2Id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+  },
+  (ppp) => [
+    primaryKey({ columns: [ppp.partidaId, ppp.posicion] }),
+    check("posicion_valida", sql`${ppp.posicion} IN (1, 2, 3)`),
+  ],
+);

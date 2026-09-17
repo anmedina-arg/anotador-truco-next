@@ -7,9 +7,10 @@ import {
   gruposParticipantesTable,
   partidasTable,
   partidasParticipantesTable,
+  picaPicaParejaTable,
 } from "../db/schema";
 import { registrarParticipante } from "./participantes";
-import { crearGrupo } from "./grupos";
+import { crearGrupo, obtenerGrupoPorId, actualizarVentanaInactividad } from "./grupos";
 import {
   crearPartida,
   crearRevancha,
@@ -60,6 +61,17 @@ afterEach(async () => {
   await db.delete(usersTable).where(inArray(usersTable.email, emails));
 });
 
+// Pica-pica: pareja por posición (equipo1[i] enfrenta a equipo2[i]) — no
+// repite a mano el objeto {jugadorEquipo1Id, jugadorEquipo2Id} en cada
+// test; el orden puntual no le importa a lo que prueba este archivo, solo
+// que sea una asignación 1 a 1 válida entre los dos Equipos.
+function parejasPorPosicion(equipo1: string[], equipo2: string[]) {
+  return equipo1.map((jugadorEquipo1Id, i) => ({
+    jugadorEquipo1Id,
+    jugadorEquipo2Id: equipo2[i],
+  }));
+}
+
 describe("crearPartida", () => {
   it("crea la Partida con los 3+3 Participantes repartidos en Equipos", async () => {
     const [p0, p1, p2, p3, p4, p5] = participanteIds;
@@ -68,6 +80,7 @@ describe("crearPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     expect(partida.grupoId).toBe(grupoId);
@@ -95,6 +108,7 @@ describe("crearPartida", () => {
       anotadorParticipanteId: p1,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     expect(partida.anotadorParticipanteId).toBe(p1);
@@ -107,6 +121,7 @@ describe("crearPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     expect(partida.tipoDeBloqueActual).toBe("ronda");
@@ -122,6 +137,7 @@ describe("crearPartida", () => {
         anotadorParticipanteId: p0,
         equipo1: [p0, p1, p2],
         equipo2: [p3, p4],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4]),
       }),
     ).rejects.toThrow("Cada Equipo necesita exactamente 3 Participantes");
   });
@@ -134,6 +150,7 @@ describe("crearPartida", () => {
         anotadorParticipanteId: p0,
         equipo1: [p0, p0, p1],
         equipo2: [p3, p4, p5],
+        picaPicaParejas: parejasPorPosicion([p0, p0, p1], [p3, p4, p5]),
       }),
     ).rejects.toThrow("Un Participante no puede estar repetido en el mismo Equipo");
   });
@@ -146,6 +163,7 @@ describe("crearPartida", () => {
         anotadorParticipanteId: p0,
         equipo1: [p0, p1, p2],
         equipo2: [p2, p3, p4],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p2, p3, p4]),
       }),
     ).rejects.toThrow("Un Participante no puede estar en los dos Equipos");
   });
@@ -158,6 +176,7 @@ describe("crearPartida", () => {
         anotadorParticipanteId: p6,
         equipo1: [p0, p1, p2],
         equipo2: [p3, p4, p5],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
       }),
     ).rejects.toThrow("El Anotador tiene que ser uno de los 6 Participantes de la Partida");
   });
@@ -170,6 +189,7 @@ describe("crearPartida", () => {
         anotadorParticipanteId: p0,
         equipo1: [p0, p1, p2],
         equipo2: [p3, p4, p7],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p7]),
       }),
     ).rejects.toThrow("Los 6 Participantes tienen que ser miembros del Grupo");
   });
@@ -181,6 +201,7 @@ describe("crearPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     // p6 es el único Participante libre — el resto de esta segunda Partida
@@ -191,6 +212,7 @@ describe("crearPartida", () => {
         anotadorParticipanteId: p5,
         equipo1: [p3, p4, p5],
         equipo2: [p0, p1, p6],
+        picaPicaParejas: parejasPorPosicion([p3, p4, p5], [p0, p1, p6]),
       }),
     ).rejects.toThrow("Alguno de los Participantes elegidos ya está jugando otra Partida");
   });
@@ -204,12 +226,14 @@ describe("crearPartida", () => {
         anotadorParticipanteId: p0,
         equipo1: [p0, p1, p2],
         equipo2: [p3, p4, p5],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
       }),
       crearPartida({
         grupoId,
         anotadorParticipanteId: p1,
         equipo1: [p1, p2, p3],
         equipo2: [p4, p5, p6],
+        picaPicaParejas: parejasPorPosicion([p1, p2, p3], [p4, p5, p6]),
       }),
     ]);
 
@@ -230,9 +254,94 @@ describe("crearPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     expect(partida1.estado).toBe("en_curso");
+  });
+
+  it("persiste las 3 parejas de Pica-pica asociadas a la Partida, en orden", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p0,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+      picaPicaParejas: [
+        { jugadorEquipo1Id: p1, jugadorEquipo2Id: p4 },
+        { jugadorEquipo1Id: p2, jugadorEquipo2Id: p5 },
+        { jugadorEquipo1Id: p0, jugadorEquipo2Id: p3 },
+      ],
+    });
+
+    const db = getDb();
+    const filas = await db
+      .select()
+      .from(picaPicaParejaTable)
+      .where(eq(picaPicaParejaTable.partidaId, partida.id))
+      .orderBy(picaPicaParejaTable.posicion);
+
+    expect(filas).toHaveLength(3);
+    expect(filas.map((f) => [f.posicion, f.jugadorEquipo1Id, f.jugadorEquipo2Id])).toEqual([
+      [1, p1, p4],
+      [2, p2, p5],
+      [3, p0, p3],
+    ]);
+  });
+
+  it("rechaza si las parejas de Pica-pica no son exactamente 3", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    await expect(
+      crearPartida({
+        grupoId,
+        anotadorParticipanteId: p0,
+        equipo1: [p0, p1, p2],
+        equipo2: [p3, p4, p5],
+        picaPicaParejas: [
+          { jugadorEquipo1Id: p0, jugadorEquipo2Id: p3 },
+          { jugadorEquipo1Id: p1, jugadorEquipo2Id: p4 },
+        ],
+      }),
+    ).rejects.toThrow("Las parejas de Pica-pica tienen que ser exactamente 3");
+  });
+
+  it("rechaza si una pareja repite un Participante que ya está emparejado en otra", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    await expect(
+      crearPartida({
+        grupoId,
+        anotadorParticipanteId: p0,
+        equipo1: [p0, p1, p2],
+        equipo2: [p3, p4, p5],
+        picaPicaParejas: [
+          { jugadorEquipo1Id: p0, jugadorEquipo2Id: p3 },
+          { jugadorEquipo1Id: p0, jugadorEquipo2Id: p4 },
+          { jugadorEquipo1Id: p2, jugadorEquipo2Id: p5 },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Las parejas de Pica-pica tienen que emparejar 1 a 1 a los 3 Participantes de cada Equipo, sin repetidos",
+    );
+  });
+
+  it("rechaza si una pareja incluye a alguien que no pertenece al Equipo que dice representar", async () => {
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
+    await expect(
+      crearPartida({
+        grupoId,
+        anotadorParticipanteId: p0,
+        equipo1: [p0, p1, p2],
+        equipo2: [p3, p4, p5],
+        picaPicaParejas: [
+          { jugadorEquipo1Id: p0, jugadorEquipo2Id: p3 },
+          { jugadorEquipo1Id: p1, jugadorEquipo2Id: p4 },
+          // p6 no juega esta Partida — no es ninguno de los 3 de Equipo 1.
+          { jugadorEquipo1Id: p6, jugadorEquipo2Id: p5 },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Las parejas de Pica-pica tienen que emparejar 1 a 1 a los 3 Participantes de cada Equipo, sin repetidos",
+    );
   });
 });
 
@@ -246,6 +355,7 @@ async function crearPartidaFinalizada(equipoGanador: 1 | 2 = 1) {
     anotadorParticipanteId: p0,
     equipo1: [p0, p1, p2],
     equipo2: [p3, p4, p5],
+    picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
   });
 
   const db = getDb();
@@ -287,6 +397,34 @@ describe("crearRevancha", () => {
     );
   });
 
+  it("copia las mismas parejas de Pica-pica que tenía la Partida de referencia, sin pedir nada nuevo", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    // crearPartidaFinalizada arma las parejas con parejasPorPosicion:
+    // (p0,p3), (p1,p4), (p2,p5) — ver más arriba.
+    const original = await crearPartidaFinalizada();
+
+    const revancha = await crearRevancha({ partidaId: original.id, solicitanteId: p0 });
+
+    const db = getDb();
+    const parejasOriginal = await db
+      .select({ jugadorEquipo1Id: picaPicaParejaTable.jugadorEquipo1Id, jugadorEquipo2Id: picaPicaParejaTable.jugadorEquipo2Id })
+      .from(picaPicaParejaTable)
+      .where(eq(picaPicaParejaTable.partidaId, original.id))
+      .orderBy(picaPicaParejaTable.posicion);
+    const parejasRevancha = await db
+      .select({ jugadorEquipo1Id: picaPicaParejaTable.jugadorEquipo1Id, jugadorEquipo2Id: picaPicaParejaTable.jugadorEquipo2Id })
+      .from(picaPicaParejaTable)
+      .where(eq(picaPicaParejaTable.partidaId, revancha.id))
+      .orderBy(picaPicaParejaTable.posicion);
+
+    expect(parejasRevancha).toEqual(parejasOriginal);
+    expect(parejasRevancha).toEqual([
+      { jugadorEquipo1Id: p0, jugadorEquipo2Id: p3 },
+      { jugadorEquipo1Id: p1, jugadorEquipo2Id: p4 },
+      { jugadorEquipo1Id: p2, jugadorEquipo2Id: p5 },
+    ]);
+  });
+
   it("rechaza si la Partida no existe", async () => {
     const [p0] = participanteIds;
     await expect(
@@ -301,6 +439,7 @@ describe("crearRevancha", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     await expect(
@@ -315,6 +454,7 @@ describe("crearRevancha", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
     await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
 
@@ -343,6 +483,7 @@ describe("crearRevancha", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     await expect(
@@ -360,6 +501,7 @@ describe("crearSiguienteEquipo", () => {
       partidaId: original.id,
       solicitanteId: p0,
       equipoDesafiante: [p3, p4, p6],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p6]),
     });
 
     expect(siguiente.estado).toBe("en_curso");
@@ -379,23 +521,53 @@ describe("crearSiguienteEquipo", () => {
     expect(filas.filter((f) => f.equipoNumero === 2).map((f) => f.participanteId).sort()).toEqual(
       [p3, p4, p6].sort(),
     );
+
+    const parejas = await db
+      .select({ jugadorEquipo1Id: picaPicaParejaTable.jugadorEquipo1Id, jugadorEquipo2Id: picaPicaParejaTable.jugadorEquipo2Id })
+      .from(picaPicaParejaTable)
+      .where(eq(picaPicaParejaTable.partidaId, siguiente.id))
+      .orderBy(picaPicaParejaTable.posicion);
+    expect(parejas).toEqual([
+      { jugadorEquipo1Id: p0, jugadorEquipo2Id: p3 },
+      { jugadorEquipo1Id: p1, jugadorEquipo2Id: p4 },
+      { jugadorEquipo1Id: p2, jugadorEquipo2Id: p6 },
+    ]);
+  });
+
+  it("rechaza si las parejas de Pica-pica no corresponden a los Equipos nuevos (no se copian de la Partida anterior)", async () => {
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
+    const original = await crearPartidaFinalizada(1); // gana equipo1 = [p0, p1, p2]
+
+    await expect(
+      crearSiguienteEquipo({
+        partidaId: original.id,
+        solicitanteId: p0,
+        equipoDesafiante: [p3, p4, p6],
+        // Parejas de la Partida original (contra p5, que ya no juega esta
+        // Partida nueva) — a propósito, para confirmar que no se heredan.
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+      }),
+    ).rejects.toThrow(
+      "Las parejas de Pica-pica tienen que emparejar 1 a 1 a los 3 Participantes de cada Equipo, sin repetidos",
+    );
   });
 
   it("si el Anotador anterior ganó, sigue siendo Anotador sin necesidad de nuevoAnotadorParticipanteId", async () => {
-    const [p0, , , p3, p4, , p6] = participanteIds;
+    const [p0, p1, p2, p3, p4, , p6] = participanteIds;
     const original = await crearPartidaFinalizada(1);
 
     const siguiente = await crearSiguienteEquipo({
       partidaId: original.id,
       solicitanteId: p0,
       equipoDesafiante: [p3, p4, p6],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p6]),
     });
 
     expect(siguiente.anotadorParticipanteId).toBe(p0);
   });
 
   it("si el Anotador anterior ganó, ignora nuevoAnotadorParticipanteId si vino igual", async () => {
-    const [p0, p1, , p3, p4, , p6] = participanteIds;
+    const [p0, p1, p2, p3, p4, , p6] = participanteIds;
     const original = await crearPartidaFinalizada(1);
 
     const siguiente = await crearSiguienteEquipo({
@@ -403,13 +575,14 @@ describe("crearSiguienteEquipo", () => {
       solicitanteId: p0,
       equipoDesafiante: [p3, p4, p6],
       nuevoAnotadorParticipanteId: p1,
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p6]),
     });
 
     expect(siguiente.anotadorParticipanteId).toBe(p0);
   });
 
   it("si el Anotador anterior perdió, exige nuevoAnotadorParticipanteId", async () => {
-    const [p0, p1, p2, , , , p6] = participanteIds;
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
     // equipoGanador: 2 -> gana equipo2 = [p3, p4, p5]; el Anotador (p0) quedó
     // en equipo1, el que se reemplaza.
     const original = await crearPartidaFinalizada(2);
@@ -419,12 +592,13 @@ describe("crearSiguienteEquipo", () => {
         partidaId: original.id,
         solicitanteId: p0,
         equipoDesafiante: [p1, p2, p6],
+        picaPicaParejas: parejasPorPosicion([p3, p4, p5], [p1, p2, p6]),
       }),
     ).rejects.toThrow("Elegí quién anota la Partida nueva");
   });
 
   it("si el Anotador anterior perdió, acepta como nuevo Anotador a alguien del Equipo ganador", async () => {
-    const [p0, p1, p2, , p4, , p6] = participanteIds;
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
     const original = await crearPartidaFinalizada(2); // gana equipo2 = [p3, p4, p5]
 
     const siguiente = await crearSiguienteEquipo({
@@ -432,13 +606,14 @@ describe("crearSiguienteEquipo", () => {
       solicitanteId: p0,
       equipoDesafiante: [p1, p2, p6],
       nuevoAnotadorParticipanteId: p4,
+      picaPicaParejas: parejasPorPosicion([p3, p4, p5], [p1, p2, p6]),
     });
 
     expect(siguiente.anotadorParticipanteId).toBe(p4);
   });
 
   it("si el Anotador anterior perdió, acepta como nuevo Anotador a alguien del Equipo desafiante", async () => {
-    const [p0, p1, p2, , , , p6] = participanteIds;
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
     const original = await crearPartidaFinalizada(2);
 
     const siguiente = await crearSiguienteEquipo({
@@ -446,13 +621,14 @@ describe("crearSiguienteEquipo", () => {
       solicitanteId: p0,
       equipoDesafiante: [p1, p2, p6],
       nuevoAnotadorParticipanteId: p6,
+      picaPicaParejas: parejasPorPosicion([p3, p4, p5], [p1, p2, p6]),
     });
 
     expect(siguiente.anotadorParticipanteId).toBe(p6);
   });
 
   it("rechaza si nuevoAnotadorParticipanteId no es uno de los 6 finales", async () => {
-    const [p0, p1, p2, , , , p6] = participanteIds;
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
     const original = await crearPartidaFinalizada(2);
 
     await expect(
@@ -463,6 +639,7 @@ describe("crearSiguienteEquipo", () => {
         // p0 no juega esta Partida nueva: perdió y quedó afuera de ambos
         // Equipos (Equipo ganador = [p3, p4, p5], desafiante = [p1, p2, p6]).
         nuevoAnotadorParticipanteId: p0,
+        picaPicaParejas: parejasPorPosicion([p3, p4, p5], [p1, p2, p6]),
       }),
     ).rejects.toThrow("El nuevo Anotador tiene que ser uno de los 6 Participantes de la Partida nueva");
   });
@@ -474,6 +651,7 @@ describe("crearSiguienteEquipo", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     await expect(
@@ -481,12 +659,13 @@ describe("crearSiguienteEquipo", () => {
         partidaId: partida.id,
         solicitanteId: p0,
         equipoDesafiante: [p3, p4, p5],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
       }),
     ).rejects.toThrow("Solo se puede armar el Siguiente equipo desde una Partida finalizada");
   });
 
   it("rechaza si quien lo pide no era el Anotador de la Partida original", async () => {
-    const [, p1, , p3, p4, , p6] = participanteIds;
+    const [p0, p1, p2, p3, p4, , p6] = participanteIds;
     const original = await crearPartidaFinalizada(1);
 
     await expect(
@@ -494,6 +673,7 @@ describe("crearSiguienteEquipo", () => {
         partidaId: original.id,
         solicitanteId: p1,
         equipoDesafiante: [p3, p4, p6],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p6]),
       }),
     ).rejects.toThrow("Solo el Anotador de la Partida puede armar el Siguiente equipo");
   });
@@ -510,6 +690,7 @@ describe("crearSiguienteEquipo", () => {
       anotadorParticipanteId: p1,
       equipo1: [p1, p2, p6],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p1, p2, p6], [p3, p4, p5]),
     });
 
     await expect(
@@ -517,6 +698,7 @@ describe("crearSiguienteEquipo", () => {
         partidaId: original.id,
         solicitanteId: p0,
         equipoDesafiante: [p3, p4, p6],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p6]),
       }),
     ).rejects.toThrow("Alguno de los Participantes elegidos ya está jugando otra Partida");
   });
@@ -530,6 +712,7 @@ describe("listarPartidasEnCursoDeGrupo", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     const partidas = await listarPartidasEnCursoDeGrupo(grupoId);
@@ -547,6 +730,7 @@ describe("listarPartidasEnCursoDeGrupo", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     const db = getDb();
@@ -564,6 +748,7 @@ async function crearPartidaDePrueba() {
     anotadorParticipanteId: p0,
     equipo1: [p0, p1, p2],
     equipo2: [p3, p4, p5],
+    picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
   });
 }
 
@@ -934,6 +1119,7 @@ describe("cargarResultadoDeMano", () => {
           anotadorParticipanteId: p0,
           equipo1: [p0, p1, p2],
           equipo2: [p3, p4, p5],
+          picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
         });
 
         // Con el umbral default (5) esto seguiría en Ronda — con el umbral
@@ -998,6 +1184,7 @@ describe("cancelarPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     const cancelada = await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
@@ -1013,6 +1200,7 @@ describe("cancelarPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
     await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
 
@@ -1021,6 +1209,7 @@ describe("cancelarPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     expect(nueva.estado).toBe("en_curso");
@@ -1033,6 +1222,7 @@ describe("cancelarPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
     await cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 });
     await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
@@ -1058,6 +1248,7 @@ describe("cancelarPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
 
     await expect(
@@ -1072,6 +1263,7 @@ describe("cancelarPartida", () => {
       anotadorParticipanteId: p0,
       equipo1: [p0, p1, p2],
       equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
     });
     await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
 
@@ -1190,5 +1382,28 @@ describe("corregirBloqueManualmente", () => {
 
     expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
     expect(actualizada.manosJugadasEnBloqueActual).toBe(0);
+  });
+});
+
+// Ticket #23: a diferencia de los umbrales de Pica-pica, la ventana de
+// inactividad no vive copiada en la Partida — así que una Partida ya
+// en_curso no la tiene "congelada" al momento de crearse, lee siempre la
+// del Grupo. Ver el comentario de actualizarVentanaInactividad en
+// domain/grupos.ts para la salvedad de una pestaña ya abierta (ADR 0005):
+// eso es un límite del cliente, no del dominio, y no es lo que este test
+// cubre.
+describe("ventana de inactividad (ticket #23)", () => {
+  it("una Partida en_curso lee el valor nuevo apenas el admin lo actualiza, sin quedar congelada", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    await actualizarVentanaInactividad({
+      grupoId,
+      solicitanteId: p0,
+      ventanaInactividadSegundos: 45,
+    });
+
+    const grupoActualizado = await obtenerGrupoPorId(partida.grupoId);
+    expect(grupoActualizado?.ventanaInactividadSegundos).toBe(45);
   });
 });

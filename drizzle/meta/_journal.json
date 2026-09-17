@@ -43,6 +43,13 @@
       "when": 1789561120236,
       "tag": "0005_breezy_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789670246869,
+      "tag": "0006_rich_tombstone",
+      "breakpoints": true
     }
   ]
 }
