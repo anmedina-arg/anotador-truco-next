@@ -13,14 +13,14 @@ export function PerfilFlotante({
   const inicial = (nombre || email || "?").trim().charAt(0).toUpperCase();
 
   return (
-    <details className="fixed right-4 top-4 z-10">
+    <details className="fixed right-4 top-4 z-10 w-10">
       <summary
         className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full bg-accent font-display font-bold text-white shadow-pop-accent-sm"
         aria-label="Mi perfil"
       >
         {inicial}
       </summary>
-      <div className="mt-2 flex w-44 flex-col gap-1 rounded-2xl border-2 border-line bg-surface p-2 text-sm font-bold shadow-pop">
+      <div className="absolute right-0 mt-2 flex w-44 flex-col gap-1 rounded-2xl border-2 border-line bg-surface p-2 text-sm font-bold shadow-pop">
         <a href="/" className="rounded-xl px-2 py-1.5 text-ink no-underline hover:bg-accent-soft hover:text-accent">
           Inicio
         </a>

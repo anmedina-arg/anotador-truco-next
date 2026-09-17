@@ -7,7 +7,7 @@ import {
   crearGrupo,
   listarGruposDeParticipante,
   listarMiembrosDeGrupo,
-  obtenerGrupoMasAntiguoDeParticipante,
+  obtenerGrupoMasActivoDeParticipante,
   unirseAGrupo,
   regenerarCodigoInvitacion,
   sacarMiembro,
@@ -169,14 +169,34 @@ describe("listarGruposDeParticipante", () => {
   });
 });
 
-describe("obtenerGrupoMasAntiguoDeParticipante", () => {
-  it("devuelve el Grupo al que el Participante se sumó primero, no el más nuevo", async () => {
+describe("obtenerGrupoMasActivoDeParticipante", () => {
+  it("devuelve el Grupo con más Partidas jugadas por el Participante, no el más nuevo", async () => {
+    const grupo1 = await crearGrupo({ nombre: "El más jugado", adminParticipanteId: adminId });
+    const grupo2 = await crearGrupo({ nombre: "El más nuevo", adminParticipanteId: adminId });
+
+    // grupo2 se creó después (fechaAlta más reciente) pero tiene más
+    // Partidas jugadas — si el test pasara igual sin esto, podría ser
+    // porque la función sigue ordenando por fechaAlta y no por actividad.
+    const db = getDb();
+    await db
+      .update(gruposParticipantesTable)
+      .set({ partidasJugadas: 3 })
+      .where(
+        and(
+          eq(gruposParticipantesTable.grupoId, grupo1.id),
+          eq(gruposParticipantesTable.participanteId, adminId),
+        ),
+      );
+
+    const masActivo = await obtenerGrupoMasActivoDeParticipante(adminId);
+
+    expect(masActivo?.id).toBe(grupo1.id);
+  });
+
+  it("ante un empate en Partidas jugadas, devuelve el Grupo al que se sumó primero", async () => {
     const grupo1 = await crearGrupo({ nombre: "El más viejo", adminParticipanteId: adminId });
     const grupo2 = await crearGrupo({ nombre: "El más nuevo", adminParticipanteId: adminId });
 
-    // Fechas de alta bien separadas y a propósito en orden inverso al de
-    // creación — si el test pasara igual sin esto, podría ser porque la
-    // función ordena por orden de creación/inserción y no por fechaAlta.
     const db = getDb();
     await db
       .update(gruposParticipantesTable)
@@ -197,14 +217,14 @@ describe("obtenerGrupoMasAntiguoDeParticipante", () => {
         ),
       );
 
-    const masAntiguo = await obtenerGrupoMasAntiguoDeParticipante(adminId);
+    const masActivo = await obtenerGrupoMasActivoDeParticipante(adminId);
 
-    expect(masAntiguo?.id).toBe(grupo2.id);
+    expect(masActivo?.id).toBe(grupo2.id);
   });
 
   it("devuelve null si el Participante no es miembro de ningún Grupo", async () => {
-    const masAntiguo = await obtenerGrupoMasAntiguoDeParticipante(ajenoId);
-    expect(masAntiguo).toBeNull();
+    const masActivo = await obtenerGrupoMasActivoDeParticipante(ajenoId);
+    expect(masActivo).toBeNull();
   });
 });
 

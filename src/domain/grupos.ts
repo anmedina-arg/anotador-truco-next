@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { usersTable, gruposTable, gruposParticipantesTable } from "../db/schema";
 
@@ -155,20 +155,26 @@ export async function obtenerGrupoPorId(grupoId: string) {
   return grupo ?? null;
 }
 
-// El Grupo al que el Participante pertenece hace más tiempo — por su propia
-// fecha de alta a ese Grupo (grupoParticipante.fechaAlta), no por cuándo se
-// creó el Grupo en sí (alguien puede sumarse mucho después a un Grupo viejo).
-export async function obtenerGrupoMasAntiguoDeParticipante(participanteId: string) {
+// Grupos del Participante ordenados por actividad (más Partidas jugadas
+// primero); empate (típicamente 0 vs. 0, Grupos sin actividad todavía) se
+// resuelve por el que se sumó primero (grupoParticipante.fechaAlta), para
+// que el resultado sea determinístico. Usado por la home para decidir qué
+// Grupo(s) mostrar primero.
+export async function listarGruposDeParticipantePorActividad(participanteId: string, limite?: number) {
   const db = getDb();
 
-  const [grupo] = await db
+  const query = db
     .select({ id: gruposTable.id, nombre: gruposTable.nombre })
     .from(gruposParticipantesTable)
     .innerJoin(gruposTable, eq(gruposTable.id, gruposParticipantesTable.grupoId))
     .where(eq(gruposParticipantesTable.participanteId, participanteId))
-    .orderBy(asc(gruposParticipantesTable.fechaAlta))
-    .limit(1);
+    .orderBy(desc(gruposParticipantesTable.partidasJugadas), asc(gruposParticipantesTable.fechaAlta));
 
+  return limite ? query.limit(limite) : query;
+}
+
+export async function obtenerGrupoMasActivoDeParticipante(participanteId: string) {
+  const [grupo] = await listarGruposDeParticipantePorActividad(participanteId, 1);
   return grupo ?? null;
 }
 

@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import {
-  obtenerGrupoMasAntiguoDeParticipante,
+  listarGruposDeParticipantePorActividad,
   listarMiembrosDeGrupo,
   ordenarPorRanking,
 } from "@/domain/grupos";
@@ -17,7 +17,7 @@ export default async function Home() {
     redirect("/login");
   }
 
-  const grupo = await obtenerGrupoMasAntiguoDeParticipante(session.user.id);
+  const [grupo, grupoSecundario] = await listarGruposDeParticipantePorActividad(session.user.id, 2);
 
   let partidaEnCursoId: string | null = null;
   let ranking: Awaited<ReturnType<typeof listarMiembrosDeGrupo>> = [];
@@ -41,14 +41,45 @@ export default async function Home() {
 
       <main className="mx-auto flex max-w-md flex-col gap-7 p-6 pt-16">
         <section className="flex flex-col gap-2">
-          <h2 className="font-display text-lg font-bold text-ink">Mis Grupos</h2>
-          {grupo ? (
-            <a
-              href={`/grupos/${grupo.id}`}
-              className="rounded-2xl border-2 border-line bg-surface p-4 text-sm font-bold text-ink no-underline shadow-pop"
-            >
-              {grupo.nombre}
+          <div className="flex items-center justify-between">
+            <h2 className="font-display text-lg font-bold text-ink">Mis Grupos</h2>
+            <a href="/grupos" className="text-sm font-bold text-accent no-underline hover:text-accent-dark">
+              Ver todos los grupos
             </a>
+          </div>
+          {grupo ? (
+            <div
+              className={`relative overflow-hidden rounded-2xl border-2 border-line bg-surface shadow-pop ${
+                grupoSecundario ? "h-[90px]" : ""
+              }`}
+            >
+              <div className="flex flex-col divide-y divide-line">
+                <a
+                  href={`/grupos/${grupo.id}`}
+                  className="p-4 text-sm font-bold text-ink no-underline hover:text-accent"
+                >
+                  {grupo.nombre}
+                </a>
+                {grupoSecundario && (
+                  <a
+                    href={`/grupos/${grupoSecundario.id}`}
+                    className="p-4 text-sm font-bold text-ink no-underline hover:text-accent"
+                  >
+                    {grupoSecundario.nombre}
+                  </a>
+                )}
+              </div>
+              {/* El segundo Grupo se corta a propósito contra el borde de esta
+                  caja: el degradé + la sombra interior simulan que se pierde
+                  dentro de la apertura, insinuando que hay más sin mostrarlo
+                  entero (ver "Ventana con corte" acordado con Andrés). */}
+              {grupoSecundario && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-b from-transparent to-surface shadow-[inset_0_-10px_10px_-8px_rgba(28,27,46,0.25)]"
+                />
+              )}
+            </div>
           ) : (
             <p className="text-sm text-muted">
               Todavía no sos parte de ningún Grupo.{" "}
