@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
+import type { TipoDeBloque } from "@/domain/partidas";
 import { FosforosTally } from "@/components/fosforos-tally";
 import { cargarResultadoDeManoAction, corregirPuntoAction } from "./actions";
 
@@ -9,6 +10,17 @@ const CORTE_MALAS_BUENAS = 15;
 const PUNTOS_PARA_GANAR = 30;
 const REINTENTOS_FLUSH = 2;
 const BACKOFF_MS = [500, 1500];
+
+// Bloque (ver CONTEXT.md): tipo de la Mano que corresponde jugar a
+// continuación, calculado server-side en cada render — sin timer ni
+// polling en el cliente (ver ticket #20). El texto del badge se queda acá
+// (no es optimista, solo cambia cuando el prop se refresca), pero vive en
+// este componente para poder mostrar el indicador circular del debounce
+// justo al lado, con el mismo estado que ya maneja el debounce.
+const NOMBRE_DE_BLOQUE: Record<TipoDeBloque, string> = {
+  ronda: "Ronda",
+  pica_pica: "Pica-pica",
+};
 
 // Mismo rótulo/color que la selección de equipos en Nueva Partida — ver
 // formulario.tsx: Equipo 1 siempre es "Nosotros" (accent), Equipo 2 siempre
@@ -70,12 +82,14 @@ export function MarcadorEnVivo({
   partidaId,
   grupoId,
   ventanaInactividadSegundos,
+  tipoDeBloqueActual,
   equipo1,
   equipo2,
 }: {
   partidaId: string;
   grupoId: string;
   ventanaInactividadSegundos: number;
+  tipoDeBloqueActual: TipoDeBloque;
   equipo1: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
   equipo2: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
 }) {
@@ -101,6 +115,13 @@ export function MarcadorEnVivo({
     equipo2: equipo2.puntosConfirmados,
   });
   const [error, setError] = useState<string | null>(null);
+  // Indicador circular del debounce, puramente visual: se activa mientras
+  // el timer está corriendo, se desactiva apenas se cumple la ventana (no
+  // espera a que la Mano termine de confirmarse contra el servidor — ver
+  // IndicadorDebounce). cicloDebounce cambia en cada reinicio del timer
+  // para forzar que la animación CSS arranque de cero (vía key).
+  const [debounceActivo, setDebounceActivo] = useState(false);
+  const [cicloDebounce, setCicloDebounce] = useState(0);
   const [, startTransition] = useTransition();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -209,7 +230,13 @@ export function MarcadorEnVivo({
 
   const reiniciarDebounce = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    setDebounceActivo(true);
+    setCicloDebounce((n) => n + 1);
     debounceRef.current = setTimeout(() => {
+      // El indicador se apaga apenas se cumple la ventana — no espera a
+      // que la Mano termine de confirmarse contra el servidor, solo
+      // representa el tiempo de espera en sí.
+      setDebounceActivo(false);
       startTransition(() => {
         void flush();
       });
@@ -229,6 +256,7 @@ export function MarcadorEnVivo({
       // sentido esperar una ventana de corrección para confirmar que la
       // Partida ya terminó (ver ADR 0005).
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      setDebounceActivo(false);
       startTransition(() => {
         void flush();
       });
@@ -245,10 +273,21 @@ export function MarcadorEnVivo({
       // Cancela un toque de "+" todavía sin mandar — nunca toca el
       // servidor, y sigue siendo parte de la misma Mano en curso.
       setError(null);
-      actualizarPendiente((anterior) =>
-        num === 1 ? { ...anterior, equipo1: anterior.equipo1 - 1 } : { ...anterior, equipo2: anterior.equipo2 - 1 },
-      );
-      reiniciarDebounce();
+      let quedaAlgoPendiente = false;
+      actualizarPendiente((anterior) => {
+        const nuevo =
+          num === 1 ? { ...anterior, equipo1: anterior.equipo1 - 1 } : { ...anterior, equipo2: anterior.equipo2 - 1 };
+        quedaAlgoPendiente = nuevo.equipo1 !== 0 || nuevo.equipo2 !== 0;
+        return nuevo;
+      });
+      if (quedaAlgoPendiente) {
+        reiniciarDebounce();
+      } else {
+        // Se canceló el último toque pendiente — no queda nada que
+        // flushear, no tiene sentido seguir esperando.
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        setDebounceActivo(false);
+      }
       return;
     }
 
@@ -265,8 +304,19 @@ export function MarcadorEnVivo({
     });
   };
 
+  const colorBadge = tipoDeBloqueActual === "pica_pica" ? "text-accent2" : "text-accent";
+
   return (
     <>
+      <p className="flex shrink-0 items-center justify-center gap-2 text-center text-sm font-display font-bold text-ink">
+        <span>
+          Mano actual: <span className={colorBadge}>{NOMBRE_DE_BLOQUE[tipoDeBloqueActual]}</span>
+        </span>
+        {debounceActivo && (
+          <IndicadorDebounce cicloId={cicloDebounce} segundos={ventanaInactividadSegundos} claseColor={colorBadge} />
+        )}
+      </p>
+
       <div className="flex min-h-0 flex-1 justify-around gap-4">
         <Marcador
           miembros={equipo1.miembros}
@@ -292,6 +342,45 @@ export function MarcadorEnVivo({
         </p>
       )}
     </>
+  );
+}
+
+// Anillo circular que se va pintando a lo largo de la ventana de
+// inactividad del Grupo — puramente decorativo, no decide nada por su
+// cuenta (el debounce real vive en reiniciarDebounce/flush). `cicloId`
+// como key fuerza que la animación CSS (ver globals.css) arranque de cero
+// cada vez que el debounce se reinicia, en vez de continuar desde donde
+// venía.
+function IndicadorDebounce({
+  segundos,
+  cicloId,
+  claseColor,
+}: {
+  segundos: number;
+  cicloId: number;
+  claseColor: string;
+}) {
+  return (
+    <svg key={cicloId} width="14" height="14" viewBox="0 0 20 20" className={`shrink-0 ${claseColor}`}>
+      <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeOpacity="0.2" strokeWidth="3" />
+      <circle
+        cx="10"
+        cy="10"
+        r="8"
+        pathLength={100}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="3"
+        strokeLinecap="round"
+        style={{
+          strokeDasharray: 100,
+          strokeDashoffset: 100,
+          transform: "rotate(-90deg)",
+          transformOrigin: "50% 50%",
+          animation: `truco-pintar-debounce ${segundos}s linear forwards`,
+        }}
+      />
+    </svg>
   );
 }
 

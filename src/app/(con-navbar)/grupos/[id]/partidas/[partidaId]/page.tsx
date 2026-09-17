@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { obtenerPartidaConEquipos, esAnotadorDePartida, type TipoDeBloque } from "@/domain/partidas";
+import { obtenerPartidaConEquipos, esAnotadorDePartida } from "@/domain/partidas";
 import { obtenerGrupoPorId } from "@/domain/grupos";
 import { nombresDeEquipo, inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
 import { cancelarPartidaAction } from "./actions";
@@ -9,14 +9,6 @@ import { MarcadorEnVivo } from "./marcador-en-vivo";
 import { FosforosTally } from "@/components/fosforos-tally";
 
 const CORTE_MALAS_BUENAS = 15;
-
-// Bloque (ver CONTEXT.md): tipo de la Mano que corresponde jugar a
-// continuación, calculado server-side en cada render — sin timer ni
-// polling en el cliente (ver ticket #20).
-const NOMBRE_DE_BLOQUE: Record<TipoDeBloque, string> = {
-  ronda: "Ronda",
-  pica_pica: "Pica-pica",
-};
 
 // Mismo rótulo/color que la selección de equipos en Nueva Partida — ver
 // formulario.tsx: Equipo 1 siempre es "Nosotros" (accent), Equipo 2 siempre
@@ -85,20 +77,12 @@ export default async function PartidaDetallePage({
         </p>
       )}
 
-      {partida.estado === "en_curso" && (
-        <p className="shrink-0 text-center text-sm font-display font-bold text-ink">
-          Mano actual:{" "}
-          <span className={partida.tipoDeBloqueActual === "pica_pica" ? "text-accent2" : "text-accent"}>
-            {NOMBRE_DE_BLOQUE[partida.tipoDeBloqueActual]}
-          </span>
-        </p>
-      )}
-
       {partida.estado === "en_curso" && grupo ? (
         <MarcadorEnVivo
           partidaId={partida.id}
           grupoId={grupoId}
           ventanaInactividadSegundos={grupo.ventanaInactividadSegundos}
+          tipoDeBloqueActual={partida.tipoDeBloqueActual}
           equipo1={{ miembros: partida.equipo1, puntosConfirmados: partida.equipo1Puntos }}
           equipo2={{ miembros: partida.equipo2, puntosConfirmados: partida.equipo2Puntos }}
         />

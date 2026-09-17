@@ -8,3 +8,16 @@ a {
 a:hover {
   color: #6427c8;
 }
+
+/* Indicador circular del debounce (ver marcador-en-vivo.tsx): se pinta de
+   0% a 100% a lo largo de la ventana de inactividad del Grupo. Usa
+   pathLength="100" en el <circle> para trabajar en unidades de porcentaje
+   sin depender del radio. */
+@keyframes truco-pintar-debounce {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
