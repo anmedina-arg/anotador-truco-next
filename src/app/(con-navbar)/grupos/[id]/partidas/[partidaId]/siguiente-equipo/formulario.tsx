@@ -3,6 +3,11 @@
 import { useActionState, useState } from "react";
 import type { ParticipanteBasico } from "@/domain/participantes";
 import { nombreDeParticipante, nombresDeEquipo } from "@/domain/participantes";
+import {
+  ArmadoDeParejasPicaPica,
+  InputsOcultosDeParejas,
+  usePicaPicaParejas,
+} from "@/components/armado-parejas-pica-pica";
 import { crearSiguienteEquipoAction } from "../actions";
 
 export function FormularioSiguienteEquipo({
@@ -32,15 +37,20 @@ export function FormularioSiguienteEquipo({
   // El pool para elegir nuevo Anotador incluye a los 3 desafiantes recién
   // elegidos, así que se recalcula en vivo a medida que se tildan — ver
   // decisión del ticket #13.
-  const candidatosAAnotador = [
-    ...equipoGanador,
-    ...candidatos.filter((c) => seleccionados.includes(c.participanteId)),
-  ];
+  const equipoDesafianteElegido = candidatos.filter((c) => seleccionados.includes(c.participanteId));
+  const candidatosAAnotador = [...equipoGanador, ...equipoDesafianteElegido];
+  const equiposCompletos = equipoDesafianteElegido.length === 3;
+
+  // Las parejas de Pica-pica no se copian de la Partida original (ver ADR
+  // 0006) — el desafiante es gente nueva, así que se arman de cero, igual
+  // que en Nueva Partida.
+  const { parejas, seleccionado, tocar, completas } = usePicaPicaParejas(equipoGanador, equipoDesafianteElegido);
 
   return (
     <form action={accion} className="flex flex-col gap-4">
       <input type="hidden" name="grupoId" value={grupoId} />
       <input type="hidden" name="partidaId" value={partidaId} />
+      <InputsOcultosDeParejas parejas={parejas} />
 
       <div className="flex flex-col gap-1">
         <h2 className="font-display text-lg font-bold text-ink">Equipo ganador (sigue)</h2>
@@ -72,6 +82,16 @@ export function FormularioSiguienteEquipo({
         </ul>
       </div>
 
+      {equiposCompletos && (
+        <ArmadoDeParejasPicaPica
+          equipo1={equipoGanador}
+          equipo2={equipoDesafianteElegido}
+          parejas={parejas}
+          seleccionado={seleccionado}
+          onTocar={tocar}
+        />
+      )}
+
       {necesitaElegirAnotador && (
         <div className="flex flex-col gap-1">
           <label className="flex flex-col gap-1 text-sm font-bold text-ink">
@@ -96,7 +116,7 @@ export function FormularioSiguienteEquipo({
 
       <button
         type="submit"
-        disabled={pendiente}
+        disabled={pendiente || !equiposCompletos || !completas}
         className="rounded-2xl bg-accent p-3 font-display font-bold text-white shadow-pop-accent disabled:opacity-50"
       >
         Confirmar Siguiente equipo

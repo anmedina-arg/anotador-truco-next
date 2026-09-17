@@ -155,6 +155,15 @@ export async function crearSiguienteEquipoAction(
   const nuevoAnotadorRaw = formData.get("nuevoAnotadorParticipanteId");
   const nuevoAnotadorParticipanteId = nuevoAnotadorRaw ? String(nuevoAnotadorRaw) : undefined;
 
+  // Parejas de Pica-pica (ver ADR 0006) armadas por toque en el cliente —
+  // mismo formato que crearPartidaAction (ver nueva/actions.ts).
+  const picaPicaJugador1 = formData.getAll("picaPicaJugador1").map(String);
+  const picaPicaJugador2 = formData.getAll("picaPicaJugador2").map(String);
+  const picaPicaParejas = picaPicaJugador1.map((jugadorEquipo1Id, i) => ({
+    jugadorEquipo1Id,
+    jugadorEquipo2Id: picaPicaJugador2[i],
+  }));
+
   let siguiente: Awaited<ReturnType<typeof crearSiguienteEquipo>>;
   try {
     siguiente = await crearSiguienteEquipo({
@@ -162,6 +171,7 @@ export async function crearSiguienteEquipoAction(
       solicitanteId: session.user.id,
       equipoDesafiante,
       nuevoAnotadorParticipanteId,
+      picaPicaParejas,
     });
   } catch (error) {
     if (error instanceof Error) {

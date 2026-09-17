@@ -26,6 +26,16 @@ export async function crearPartidaAction(
     else if (value === "2") equipo2.push(participanteId);
   }
 
+  // Parejas de Pica-pica (ver ADR 0006) armadas por toque en el cliente
+  // (ver ArmadoDeParejasPicaPica) — viajan como pares de inputs ocultos con
+  // el mismo índice en los dos nombres.
+  const picaPicaJugador1 = formData.getAll("picaPicaJugador1").map(String);
+  const picaPicaJugador2 = formData.getAll("picaPicaJugador2").map(String);
+  const picaPicaParejas = picaPicaJugador1.map((jugadorEquipo1Id, i) => ({
+    jugadorEquipo1Id,
+    jugadorEquipo2Id: picaPicaJugador2[i],
+  }));
+
   let partida: Awaited<ReturnType<typeof crearPartida>>;
   try {
     partida = await crearPartida({
@@ -33,6 +43,7 @@ export async function crearPartidaAction(
       anotadorParticipanteId: session.user.id,
       equipo1,
       equipo2,
+      picaPicaParejas,
     });
   } catch (error) {
     if (error instanceof Error) {
