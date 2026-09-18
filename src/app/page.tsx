@@ -108,7 +108,7 @@ export default async function Home() {
               href={`/grupos/${grupo.id}/partidas/nueva`}
               className="block rounded-2xl bg-accent2 p-4 text-center text-sm font-display font-bold text-white no-underline shadow-pop-accent2"
             >
-              Nueva Partida
+              Crear Partida nueva en {grupo.nombre}
             </a>
           </section>
         )}
