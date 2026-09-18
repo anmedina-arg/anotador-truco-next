@@ -95,6 +95,7 @@ export function FormularioSiguienteEquipo({
         parejas={parejas}
         seleccionado={seleccionado}
         onTocar={tocar}
+        textoConfirmar="Confirmar Siguiente equipo"
       />
 
       {necesitaElegirAnotador && (

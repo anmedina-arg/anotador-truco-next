@@ -94,6 +94,7 @@ export function FormularioNuevaPartida({
         parejas={parejas}
         seleccionado={seleccionado}
         onTocar={tocar}
+        textoConfirmar="Crear Partida"
       />
 
       {estado?.message && <p className="text-sm font-bold text-danger">{estado.message}</p>}

@@ -185,6 +185,7 @@ export function ModalDeParejasPicaPica({
   parejas,
   seleccionado,
   onTocar,
+  textoConfirmar,
 }: {
   abierto: boolean;
   onCerrar: () => void;
@@ -193,8 +194,15 @@ export function ModalDeParejasPicaPica({
   parejas: ParejaPicaPica[];
   seleccionado: string | null;
   onTocar: (participanteId: string) => void;
+  // Texto del botón de confirmar una vez armadas las 3 parejas — "Crear
+  // Partida"/"Confirmar Siguiente equipo" según el formulario. Ese mismo
+  // toque cierra el modal Y envía el formulario en un solo paso (evita el
+  // scroll + toque aparte al botón de submit de más abajo).
+  textoConfirmar: string;
 }) {
   if (!abierto) return null;
+
+  const completas = parejas.length === PAREJAS_REQUERIDAS;
 
   return (
     <div
@@ -210,11 +218,11 @@ export function ModalDeParejasPicaPica({
           onTocar={onTocar}
         />
         <button
-          type="button"
+          type={completas ? "submit" : "button"}
           onClick={onCerrar}
           className="mt-3 w-full rounded-2xl bg-accent p-3 font-display font-bold text-white shadow-pop-accent"
         >
-          Listo
+          {completas ? textoConfirmar : "Listo"}
         </button>
       </div>
     </div>
