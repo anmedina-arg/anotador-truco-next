@@ -50,6 +50,13 @@
       "when": 1789670246869,
       "tag": "0006_rich_tombstone",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789734561370,
+      "tag": "0007_glorious_thor_girl",
+      "breakpoints": true
     }
   ]
 }

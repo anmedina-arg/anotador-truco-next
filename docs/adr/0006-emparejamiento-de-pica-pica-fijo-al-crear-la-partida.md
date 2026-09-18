@@ -14,13 +14,28 @@ regla invisible al armado de Equipos que hoy no tiene ninguna.
 
 Se eligió en cambio que el Anotador arme el emparejamiento a mano,
 explícitamente, al crear la Partida — igual momento en que ya arma los
-Equipos. Una vez creada la Partida, el emparejamiento **no cambia**, ni
-siquiera si la Fase alternada (ver `CONTEXT.md`: Fase) vuelve a Pica-pica
-más de una vez: la pareja en la posición N juega siempre la Mano N-ésima de
-cualquier Bloque de Pica-pica de esa Partida. No hay pantalla para
-editarlo después — el mismo criterio que ya usa ADR 0004 para los umbrales
-de Pica-pica del Grupo: es una decisión que se toma una vez y no hace falta
-revisar a mitad de partido.
+Equipos. Una vez creada la Partida, **quiénes forman cada pareja no
+cambia**, ni siquiera si la Fase alternada (ver `CONTEXT.md`: Fase) vuelve
+a Pica-pica más de una vez. No hay pantalla para editarlo después — el
+mismo criterio que ya usa ADR 0004 para los umbrales de Pica-pica del
+Grupo: es una decisión que se toma una vez y no hace falta revisar a mitad
+de partido.
+
+> **Corrección (ticket #29).** La primera versión de este ADR asumía
+> además que el *orden* en que esas 3 parejas se turnan dentro de un
+> Bloque de Pica-pica era fijo también — "la pareja en la posición N juega
+> siempre la Mano N-ésima de cualquier Bloque de Pica-pica de esa
+> Partida". Eso era incorrecto: en la mesa real ese orden puede variar de
+> un Bloque de Pica-pica al siguiente dentro de la misma Partida, y
+> tampoco se puede saber de antemano cuántos Bloques de Pica-pica va a
+> tener la Partida — no hay ningún dato ya guardado del que la app pueda
+> derivarlo sola. Por eso la atribución de cada Mano de Pica-pica a su
+> pareja no se calcula: la indica el Anotador en vivo, tocando en el
+> marcador a cualquiera de los 2 integrantes de la pareja que está por
+> jugar (ver ticket #30). La `posicion` que guarda cada pareja (ver más
+> abajo) queda entonces sin rol funcional en la atribución — solo ordena
+> cómo se muestran las 3 parejas ("Pareja 1/2/3") en el modal de armado
+> (ticket #26).
 
 Este emparejamiento fijo participa distinto según el flujo de creación:
 

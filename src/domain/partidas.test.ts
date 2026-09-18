@@ -8,6 +8,7 @@ import {
   partidasTable,
   partidasParticipantesTable,
   picaPicaParejaTable,
+  picaPicaManoTable,
 } from "../db/schema";
 import { registrarParticipante } from "./participantes";
 import { crearGrupo, obtenerGrupoPorId, actualizarVentanaInactividad } from "./grupos";
@@ -20,6 +21,7 @@ import {
   cargarResultadoDeMano,
   cancelarPartida,
   corregirBloqueManualmente,
+  obtenerHistorialEntreJugadores,
 } from "./partidas";
 
 // p0..p6 quedan como miembros del Grupo; p7 registrado pero sin sumarse,
@@ -1154,6 +1156,7 @@ describe("cargarResultadoDeMano", () => {
         solicitanteId: p0,
         deltaEquipo1: 0,
         deltaEquipo2: 1,
+        parejaActivaParticipanteId: p0,
       });
 
       expect(actualizada.tipoDeBloqueActual).toBe("pica_pica");
@@ -1173,6 +1176,263 @@ describe("cargarResultadoDeMano", () => {
 
       expect(actualizada.ultimoPuntoAnotadoEn).toBeTruthy();
     });
+  });
+
+  // Ticket #29 (ver ADR 0006 corregido): el orden en que las parejas de
+  // Pica-pica se turnan entre Bloques no es fijo, así que el Anotador
+  // indica la pareja activa en cada Mano — acá se prueba esa validación y
+  // el historial que arma.
+  describe("pareja activa de Pica-pica (ticket #29)", () => {
+    it("inserta el historial con la pareja activa indicada, orientado por Equipo", async () => {
+      const [p0, p1, p2, p3, p4] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+      await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+      // crearPartidaDePrueba arma las parejas con parejasPorPosicion:
+      // (p0,p3), (p1,p4), (p2,p5) — acá se indica p4 (el integrante de
+      // Equipo 2 de la pareja 2), para confirmar que alcanza con cualquiera
+      // de los 2 integrantes, no solo el de Equipo 1.
+      await cargarResultadoDeMano({
+        partidaId: partida.id,
+        solicitanteId: p0,
+        deltaEquipo1: 2,
+        deltaEquipo2: 1,
+        parejaActivaParticipanteId: p4,
+      });
+
+      const db = getDb();
+      const filas = await db
+        .select({
+          jugadorAId: picaPicaManoTable.jugadorAId,
+          jugadorBId: picaPicaManoTable.jugadorBId,
+          deltaJugadorA: picaPicaManoTable.deltaJugadorA,
+          deltaJugadorB: picaPicaManoTable.deltaJugadorB,
+        })
+        .from(picaPicaManoTable)
+        .where(eq(picaPicaManoTable.partidaId, partida.id));
+
+      expect(filas).toEqual([{ jugadorAId: p1, jugadorBId: p4, deltaJugadorA: 2, deltaJugadorB: 1 }]);
+    });
+
+    // Si la Mano hace ganar la Partida, el clamp a 30 puede recortar el
+    // delta de Equipo 1, y el de Equipo 2 puede no llegar a aplicarse en
+    // absoluto (ver el comentario de "Puntaje" en cargarResultadoDeMano) —
+    // el historial tiene que reflejar el delta REALMENTE aplicado al
+    // marcador, no el que vino en el input.
+    it("atribuye el delta realmente aplicado, no el crudo, cuando la Mano hace ganar la Partida", async () => {
+      const [p0] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+      await sembrarMarcador(partida.id, { equipo1Puntos: 29, tipoDeBloqueActual: "pica_pica" });
+
+      const actualizada = await cargarResultadoDeMano({
+        partidaId: partida.id,
+        solicitanteId: p0,
+        deltaEquipo1: 5,
+        deltaEquipo2: 3,
+        parejaActivaParticipanteId: p0,
+      });
+
+      // Confirma la premisa: Equipo 1 clampeó a 30 (solo +1 de los +5
+      // pedidos) y el +3 de Equipo 2 no llegó a aplicarse.
+      expect(actualizada.equipo1Puntos).toBe(30);
+      expect(actualizada.equipo2Puntos).toBe(0);
+      expect(actualizada.equipoGanador).toBe(1);
+
+      const db = getDb();
+      const [fila] = await db
+        .select({ deltaJugadorA: picaPicaManoTable.deltaJugadorA, deltaJugadorB: picaPicaManoTable.deltaJugadorB })
+        .from(picaPicaManoTable)
+        .where(eq(picaPicaManoTable.partidaId, partida.id));
+
+      expect(fila).toEqual({ deltaJugadorA: 1, deltaJugadorB: 0 });
+    });
+
+    it("rechaza si el Bloque es Pica-pica y no viene la pareja activa", async () => {
+      const [p0] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+      await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+      await expect(
+        cargarResultadoDeMano({ partidaId: partida.id, solicitanteId: p0, deltaEquipo1: 1, deltaEquipo2: 0 }),
+      ).rejects.toThrow("Hay que indicar qué pareja de Pica-pica está jugando esta Mano");
+    });
+
+    it("rechaza si la pareja activa indicada no es una de las parejas fijas de la Partida", async () => {
+      const [p0, , , , , , p6] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+      await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+      // p6 es miembro del Grupo pero no juega esta Partida — no está en
+      // ninguna de sus 3 parejas fijas.
+      await expect(
+        cargarResultadoDeMano({
+          partidaId: partida.id,
+          solicitanteId: p0,
+          deltaEquipo1: 1,
+          deltaEquipo2: 0,
+          parejaActivaParticipanteId: p6,
+        }),
+      ).rejects.toThrow("La pareja activa indicada no es una de las parejas fijas de esta Partida");
+    });
+
+    it("no exige pareja activa en una Mano de Ronda, y no inserta historial", async () => {
+      const [p0] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+
+      await cargarResultadoDeMano({
+        partidaId: partida.id,
+        solicitanteId: p0,
+        deltaEquipo1: 1,
+        deltaEquipo2: 0,
+      });
+
+      const db = getDb();
+      const filas = await db
+        .select()
+        .from(picaPicaManoTable)
+        .where(eq(picaPicaManoTable.partidaId, partida.id));
+      expect(filas).toHaveLength(0);
+    });
+
+    it("una corrección manual de un punto (anotarPunto) no toca el historial de Pica-pica", async () => {
+      const [p0] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+      await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+      await cargarResultadoDeMano({
+        partidaId: partida.id,
+        solicitanteId: p0,
+        deltaEquipo1: 1,
+        deltaEquipo2: 0,
+        parejaActivaParticipanteId: p0,
+      });
+      await anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: -1 });
+
+      const db = getDb();
+      const filas = await db
+        .select()
+        .from(picaPicaManoTable)
+        .where(eq(picaPicaManoTable.partidaId, partida.id));
+      expect(filas).toHaveLength(1);
+      expect(filas[0].deltaJugadorA).toBe(1);
+    });
+
+    it("las Manos de Pica-pica confirmadas antes de cancelar la Partida siguen en el historial", async () => {
+      const [p0] = participanteIds;
+      const partida = await crearPartidaDePrueba();
+      await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+      await cargarResultadoDeMano({
+        partidaId: partida.id,
+        solicitanteId: p0,
+        deltaEquipo1: 1,
+        deltaEquipo2: 0,
+        parejaActivaParticipanteId: p0,
+      });
+      await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+      const db = getDb();
+      const filas = await db
+        .select()
+        .from(picaPicaManoTable)
+        .where(eq(picaPicaManoTable.partidaId, partida.id));
+      expect(filas).toHaveLength(1);
+    });
+  });
+});
+
+describe("obtenerHistorialEntreJugadores", () => {
+  it("suma el total de puntos y la cantidad de Manos entre dos Participantes", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+    // Pareja 1 de crearPartidaDePrueba: (p0, p3).
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 2,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
+    });
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 3,
+      parejaActivaParticipanteId: p3,
+    });
+    // Pareja 2 (p1, p4) — no tiene que sumar al historial entre p0 y p3.
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 5,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p1,
+    });
+
+    const resultado = await obtenerHistorialEntreJugadores(grupoId, p0, p3);
+    expect(resultado).toEqual({ puntosParticipanteA: 3, puntosParticipanteB: 3, manosJugadas: 2 });
+
+    // Mismo resultado, orientado al revés, sin importar el orden de los IDs.
+    const resultadoInvertido = await obtenerHistorialEntreJugadores(grupoId, p3, p0);
+    expect(resultadoInvertido).toEqual({ puntosParticipanteA: 3, puntosParticipanteB: 3, manosJugadas: 2 });
+
+    // p1 no jugó nunca contra p2 en esta Partida.
+    const sinHistorial = await obtenerHistorialEntreJugadores(grupoId, p1, p2);
+    expect(sinHistorial).toEqual({ puntosParticipanteA: 0, puntosParticipanteB: 0, manosJugadas: 0 });
+  });
+
+  it("no suma Manos de Partidas de otro Grupo", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 4,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
+    });
+    // Libera a los 6 Participantes (ver cancelarPartida) — si no, crear la
+    // Partida del otro Grupo más abajo con la misma gente choca contra la
+    // exclusividad de "ya está jugando otra Partida en_curso". La Mano ya
+    // confirmada sigue contando igual (ver el test de más arriba).
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    const db = getDb();
+    const otroGrupo = await crearGrupo({ nombre: "Otro Grupo", adminParticipanteId: p0 });
+    try {
+      await db.insert(gruposParticipantesTable).values(
+        [p1, p2, p3, p4, p5].map((participanteId) => ({ grupoId: otroGrupo.id, participanteId })),
+      );
+      const otraPartida = await crearPartida({
+        grupoId: otroGrupo.id,
+        anotadorParticipanteId: p0,
+        equipo1: [p0, p1, p2],
+        equipo2: [p3, p4, p5],
+        picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+      });
+      await sembrarMarcador(otraPartida.id, { tipoDeBloqueActual: "pica_pica" });
+      await cargarResultadoDeMano({
+        partidaId: otraPartida.id,
+        solicitanteId: p0,
+        deltaEquipo1: 7,
+        deltaEquipo2: 0,
+        parejaActivaParticipanteId: p0,
+      });
+
+      // El historial de p0 vs p3 dentro del Grupo original solo cuenta la
+      // Mano de esa Partida — no la del otro Grupo, aunque sea el mismo par.
+      const resultado = await obtenerHistorialEntreJugadores(grupoId, p0, p3);
+      expect(resultado).toEqual({ puntosParticipanteA: 4, puntosParticipanteB: 0, manosJugadas: 1 });
+    } finally {
+      await db.delete(partidasTable).where(eq(partidasTable.grupoId, otroGrupo.id));
+      await db.delete(gruposParticipantesTable).where(eq(gruposParticipantesTable.grupoId, otroGrupo.id));
+      await db.delete(gruposTable).where(eq(gruposTable.id, otroGrupo.id));
+    }
   });
 });
 
@@ -1332,6 +1592,7 @@ describe("corregirBloqueManualmente", () => {
       solicitanteId: p0,
       deltaEquipo1: 1,
       deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
     });
     expect(mano1.tipoDeBloqueActual).toBe("pica_pica");
     expect(mano1.manosJugadasEnBloqueActual).toBe(1);
@@ -1341,6 +1602,7 @@ describe("corregirBloqueManualmente", () => {
       solicitanteId: p0,
       deltaEquipo1: 1,
       deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
     });
     expect(mano2.tipoDeBloqueActual).toBe("pica_pica");
     expect(mano2.manosJugadasEnBloqueActual).toBe(2);
@@ -1354,6 +1616,7 @@ describe("corregirBloqueManualmente", () => {
       solicitanteId: p0,
       deltaEquipo1: 1,
       deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
     });
     expect(mano3.tipoDeBloqueActual).toBe("ronda");
     expect(mano3.manosJugadasEnBloqueActual).toBe(0);

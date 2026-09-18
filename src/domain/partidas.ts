@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import type { ParticipanteBasico } from "./participantes";
 import { nivelDeVictoria, calcularEstadisticasRanking } from "./grupos";
@@ -9,6 +9,7 @@ import {
   partidasTable,
   partidasParticipantesTable,
   picaPicaParejaTable,
+  picaPicaManoTable,
 } from "../db/schema";
 
 const PUNTOS_PARA_GANAR = 30;
@@ -226,9 +227,11 @@ async function obtenerPartidaFinalizadaDelAnotador(
 }
 
 // Parejas fijas de Pica-pica de una Partida (ver ADR 0006), en orden de
-// posicion — así cargarResultadoDeMano (ticket #27) puede indexarlas
-// directo por "manosJugadasEnBloqueActual", y crearRevancha puede copiarlas
-// tal cual a la Partida nueva sin tener que reconstruirlas.
+// posicion — la posicion ya no decide a qué pareja le toca cada Mano (ver
+// corrección del ADR 0006, ticket #29: el orden entre Bloques de Pica-pica
+// no es fijo), solo ordena cómo se muestran ("Pareja 1/2/3", ticket #26).
+// crearRevancha usa esto para copiarlas tal cual a la Partida nueva sin
+// tener que reconstruirlas.
 async function obtenerParejasPicaPica(partidaId: string): Promise<ParejaPicaPica[]> {
   const db = getDb();
 
@@ -467,6 +470,11 @@ export async function cargarResultadoDeMano(input: {
   solicitanteId: string;
   deltaEquipo1: number;
   deltaEquipo2: number;
+  // Pareja activa de Pica-pica (ver ADR 0006, ticket #29): un
+  // participanteId alcanza, el otro integrante se resuelve contra las
+  // parejas fijas de la Partida. Obligatorio solo cuando el Bloque vigente
+  // es Pica-pica — se ignora si es Ronda.
+  parejaActivaParticipanteId?: string;
 }) {
   if (
     !Number.isInteger(input.deltaEquipo1) ||
@@ -509,6 +517,38 @@ export async function cargarResultadoDeMano(input: {
       })
       .from(gruposTable)
       .where(eq(gruposTable.id, partida.grupoId));
+
+    // Pareja activa de Pica-pica (ver ADR 0006, ticket #29): el orden en
+    // que las 3 parejas se turnan entre Bloques de Pica-pica no es fijo en
+    // la mesa real, así que no hay ningún dato ya guardado del que se
+    // pueda derivar sola — el Anotador la indica en cada Mano, y acá se
+    // valida contra las parejas fijas de la Partida antes de persistir
+    // nada. tipoDeBloqueActual acá es el tipo con el que se jugó ESTA Mano
+    // (el valor persistido antes de esta llamada, igual criterio que ya
+    // usa el cálculo de Bloque más abajo).
+    let parejaActiva: { jugadorEquipo1Id: string; jugadorEquipo2Id: string } | null = null;
+    if (partida.tipoDeBloqueActual === "pica_pica") {
+      if (!input.parejaActivaParticipanteId) {
+        throw new Error("Hay que indicar qué pareja de Pica-pica está jugando esta Mano");
+      }
+      const parejas = await tx
+        .select({
+          jugadorEquipo1Id: picaPicaParejaTable.jugadorEquipo1Id,
+          jugadorEquipo2Id: picaPicaParejaTable.jugadorEquipo2Id,
+        })
+        .from(picaPicaParejaTable)
+        .where(eq(picaPicaParejaTable.partidaId, input.partidaId));
+
+      parejaActiva =
+        parejas.find(
+          (p) =>
+            p.jugadorEquipo1Id === input.parejaActivaParticipanteId ||
+            p.jugadorEquipo2Id === input.parejaActivaParticipanteId,
+        ) ?? null;
+      if (!parejaActiva) {
+        throw new Error("La pareja activa indicada no es una de las parejas fijas de esta Partida");
+      }
+    }
 
     // Puntaje: se aplica en orden fijo, Equipo 1 primero — si ya alcanza
     // los 30, la Partida termina ahí mismo y el delta de Equipo 2 de esta
@@ -553,26 +593,49 @@ export async function cargarResultadoDeMano(input: {
       ultimoPuntoAnotadoEn: new Date(),
     };
 
+    // Historial de Pica-pica (ver ADR 0006, ticket #29): se atribuye a la
+    // pareja activa el delta REALMENTE aplicado a cada Equipo — no
+    // input.deltaEquipo1/deltaEquipo2 tal cual vinieron, porque si esta
+    // Mano hace ganar la Partida, el clamp a 30 (arriba) puede recortar el
+    // delta de Equipo 1, y el de Equipo 2 puede no llegar a aplicarse en
+    // absoluto (ver el comentario de "Puntaje" más arriba). El historial
+    // tiene que reflejar lo que de verdad quedó sumado en el marcador de
+    // esa Partida, no lo que el cliente mandó a cargar. null en Ronda — no
+    // hay pareja que atribuirle nada.
+    const historialPicaPica = parejaActiva && {
+      partidaId: input.partidaId,
+      jugadorAId: parejaActiva.jugadorEquipo1Id,
+      jugadorBId: parejaActiva.jugadorEquipo2Id,
+      deltaJugadorA: nuevoEquipo1Puntos - partida.equipo1Puntos,
+      deltaJugadorB: nuevoEquipo2Puntos - partida.equipo2Puntos,
+    };
+
     if (equipoGanador === null) {
-      const [actualizada] = await tx
-        .update(partidasTable)
-        .set({ ...columnaPuntos, ...columnaBloque })
-        .where(eq(partidasTable.id, input.partidaId))
-        .returning();
+      const [[actualizada]] = await Promise.all([
+        tx
+          .update(partidasTable)
+          .set({ ...columnaPuntos, ...columnaBloque })
+          .where(eq(partidasTable.id, input.partidaId))
+          .returning(),
+        historialPicaPica ? tx.insert(picaPicaManoTable).values(historialPicaPica) : Promise.resolve(),
+      ]);
       return actualizada;
     }
 
-    const [finalizada] = await tx
-      .update(partidasTable)
-      .set({
-        ...columnaPuntos,
-        ...columnaBloque,
-        estado: "finalizada",
-        equipoGanador,
-        fechaFin: new Date(),
-      })
-      .where(eq(partidasTable.id, input.partidaId))
-      .returning();
+    const [[finalizada]] = await Promise.all([
+      tx
+        .update(partidasTable)
+        .set({
+          ...columnaPuntos,
+          ...columnaBloque,
+          estado: "finalizada",
+          equipoGanador,
+          fechaFin: new Date(),
+        })
+        .where(eq(partidasTable.id, input.partidaId))
+        .returning(),
+      historialPicaPica ? tx.insert(picaPicaManoTable).values(historialPicaPica) : Promise.resolve(),
+    ]);
 
     const jugadores = await tx
       .select({
@@ -726,4 +789,59 @@ export async function corregirBloqueManualmente(input: {
 
     return actualizada;
   });
+}
+
+// Historial acumulado entre dos Participantes en los Bloques de Pica-pica
+// de un Grupo (ver ADR 0006, ticket #29): suma todas las filas de
+// pica_pica_mano de Partidas de ese Grupo donde aparecen los dos IDs, en
+// cualquiera de las dos columnas — una Mano real no tiene "lado" fijo entre
+// Partidas distintas (en una Partida jugadorA puede caer en jugadorAId, en
+// otra en jugadorBId) — y devuelve el total orientado según el orden en
+// que se pidieron los IDs acá, no según cómo haya quedado guardada cada
+// fila. Mismo resultado sin importar qué Participante se pase primero.
+export async function obtenerHistorialEntreJugadores(
+  grupoId: string,
+  participanteAId: string,
+  participanteBId: string,
+) {
+  const db = getDb();
+
+  const filas = await db
+    .select({
+      jugadorAId: picaPicaManoTable.jugadorAId,
+      jugadorBId: picaPicaManoTable.jugadorBId,
+      deltaJugadorA: picaPicaManoTable.deltaJugadorA,
+      deltaJugadorB: picaPicaManoTable.deltaJugadorB,
+    })
+    .from(picaPicaManoTable)
+    .innerJoin(partidasTable, eq(partidasTable.id, picaPicaManoTable.partidaId))
+    .where(
+      and(
+        eq(partidasTable.grupoId, grupoId),
+        or(
+          and(
+            eq(picaPicaManoTable.jugadorAId, participanteAId),
+            eq(picaPicaManoTable.jugadorBId, participanteBId),
+          ),
+          and(
+            eq(picaPicaManoTable.jugadorAId, participanteBId),
+            eq(picaPicaManoTable.jugadorBId, participanteAId),
+          ),
+        ),
+      ),
+    );
+
+  let puntosParticipanteA = 0;
+  let puntosParticipanteB = 0;
+  for (const fila of filas) {
+    if (fila.jugadorAId === participanteAId) {
+      puntosParticipanteA += fila.deltaJugadorA;
+      puntosParticipanteB += fila.deltaJugadorB;
+    } else {
+      puntosParticipanteA += fila.deltaJugadorB;
+      puntosParticipanteB += fila.deltaJugadorA;
+    }
+  }
+
+  return { puntosParticipanteA, puntosParticipanteB, manosJugadas: filas.length };
 }

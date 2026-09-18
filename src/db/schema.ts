@@ -202,8 +202,10 @@ export const partidasParticipantesTable = pgTable(
 // la Partida (crearPartida) — o se copia automáticamente de la Partida de
 // referencia en una Revancha — y no cambia durante toda la Partida, ni
 // siquiera si la Fase alternada vuelve a Pica-pica más de una vez (ver ADR
-// 0006). "posicion" (1/2/3) es lo que le va a decir a cargarResultadoDeMano
-// qué pareja le toca jugar cada Mano dentro de un Bloque de Pica-pica.
+// 0006). "posicion" (1/2/3) NO decide qué pareja le toca jugar cada Mano
+// (ver corrección del ADR 0006, ticket #29: ese orden no es fijo entre
+// Bloques) — solo ordena cómo se muestran las 3 parejas ("Pareja 1/2/3",
+// ticket #26).
 export const picaPicaParejaTable = pgTable(
   "pica_pica_pareja",
   {
@@ -226,3 +228,30 @@ export const picaPicaParejaTable = pgTable(
     check("posicion_valida", sql`${ppp.posicion} IN (1, 2, 3)`),
   ],
 );
+
+// pica_pica_mano (ver CONTEXT.md/Pica-pica, ticket #29): historial mano a
+// mano de Pica-pica entre dos Participantes — una fila por cada Mano de
+// Pica-pica confirmada, con la pareja activa que el Anotador indicó en vivo
+// (ver ADR 0006: el orden entre Bloques de Pica-pica no es fijo, así que no
+// se puede derivar solo). jugadorAId/jugadorBId no tienen un orden fijo por
+// Equipo — la consulta que arma el historial entre dos Participantes
+// (obtenerHistorialEntreJugadores, domain/partidas.ts) los busca en
+// cualquiera de las dos columnas. Append-only: anotarPunto (corrección
+// manual de un punto) nunca la toca.
+export const picaPicaManoTable = pgTable("pica_pica_mano", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  partidaId: text("partidaId")
+    .notNull()
+    .references(() => partidasTable.id, { onDelete: "cascade" }),
+  jugadorAId: text("jugadorAId")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "restrict" }),
+  jugadorBId: text("jugadorBId")
+    .notNull()
+    .references(() => usersTable.id, { onDelete: "restrict" }),
+  deltaJugadorA: integer("deltaJugadorA").notNull(),
+  deltaJugadorB: integer("deltaJugadorB").notNull(),
+  creadaEn: timestamp("creadaEn", { mode: "date" }).notNull().defaultNow(),
+});
