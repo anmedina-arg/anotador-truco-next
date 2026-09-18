@@ -5,7 +5,7 @@ import {
   listarMiembrosDeGrupo,
   ordenarPorRanking,
 } from "@/domain/grupos";
-import { listarPartidasEnCursoDeGrupo, esAnotadorDePartida } from "@/domain/partidas";
+import { listarPartidasEnCursoDeGrupo } from "@/domain/partidas";
 import { nombreDeParticipante } from "@/domain/participantes";
 import { PerfilFlotante } from "@/components/perfil-flotante";
 
@@ -28,10 +28,10 @@ export default async function Home() {
       listarMiembrosDeGrupo(grupo.id),
     ]);
 
-    // Solo el Anotador de una Partida puede ver su tanteador en vivo — ver
-    // CONTEXT.md / historia de usuario 26 del ticket #1.
-    partidaEnCursoId =
-      partidasEnCurso.find((p) => esAnotadorDePartida(p, session.user.id))?.id ?? null;
+    // Cualquier miembro del Grupo puede entrar a ver el marcador de una
+    // Partida en curso, sea o no su Anotador (ver ticket #33,
+    // CONTEXT.md/Anotador) — el atajo apunta a la primera que haya.
+    partidaEnCursoId = partidasEnCurso[0]?.id ?? null;
     ranking = ordenarPorRanking(miembros).slice(0, TOP_RANKING);
   }
 

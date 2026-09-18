@@ -303,6 +303,46 @@ export async function obtenerParejasYaJugadasEnBloqueActual(partida: {
   return filas.map((f) => f.jugadorAId);
 }
 
+// Consulta liviana para el marcador de un espectador (ticket #34,
+// CONTEXT.md/Anotador) — pensada para sondearse cada pocos segundos, así
+// que trae solo lo que puede cambiar entre un tick y el siguiente
+// (puntaje, estado, Bloque vigente, parejas de Pica-pica ya jugadas).
+// Deja afuera todo lo que ya conoce el cliente desde el primer render
+// server-side y nunca cambia durante la Partida (miembros de los Equipos,
+// el emparejamiento fijo de Pica-pica, ver ADR 0006) — repetirlo en cada
+// sondeo sería tráfico de más sin ningún beneficio. grupoId va en la
+// respuesta para que quien llama pueda validar membresía del Grupo antes
+// de confiar en el resto (ver obtenerEstadoDeMarcadorAction) sin tener que
+// creerle un grupoId que mande el propio cliente.
+export async function obtenerEstadoDeMarcador(partidaId: string) {
+  const db = getDb();
+
+  const [partida] = await db.select().from(partidasTable).where(eq(partidasTable.id, partidaId));
+  if (!partida) {
+    return null;
+  }
+
+  // Riesgo aceptado: estas dos consultas no comparten transacción/snapshot,
+  // así que una Mano que se confirma justo entre una y la otra puede dejar
+  // esta respuesta puntual con el puntaje de antes pero una pareja de
+  // Pica-pica ya marcada como jugada (o viceversa) — se corrige solo en el
+  // próximo tick del sondeo, unos segundos después. Ponerlas en una
+  // transacción con REPEATABLE READ evitaría esto, pero es una vista de
+  // solo lectura para espectadores, no la fuente de verdad del puntaje
+  // (esa sigue siendo el Anotador, sin sondeo) — no vale la complejidad
+  // extra para una inconsistencia visual de un instante.
+  const parejasYaJugadas = await obtenerParejasYaJugadasEnBloqueActual(partida);
+
+  return {
+    grupoId: partida.grupoId,
+    estado: partida.estado,
+    equipo1Puntos: partida.equipo1Puntos,
+    equipo2Puntos: partida.equipo2Puntos,
+    tipoDeBloqueActual: partida.tipoDeBloqueActual,
+    parejasYaJugadas,
+  };
+}
+
 // Repite la última Partida con un tap (ticket #12): mismos 6 Participantes,
 // misma división de Equipos, mismo Anotador y las mismas parejas de
 // Pica-pica (ver ADR 0006) que la Partida finalizada de referencia,
@@ -460,6 +500,55 @@ export async function obtenerPartidaConEquipos(partidaId: string) {
   }
 
   return { ...partida, equipo1, equipo2 };
+}
+
+// Reclamo en vivo del Anotador (ticket #33, CONTEXT.md/Anotador): cuando
+// quien crea la Partida no queda jugando (ver ticket #32), la Partida
+// arranca sin Anotador asignado, y cualquiera de los 6 Participantes que
+// sí juegan puede ofrecerse. FOR UPDATE serializa dos reclamos casi
+// simultáneos igual que ya hace anotarPunto: el primero en tomar el lock
+// gana; el segundo, al verlo ya asignado, no aplica ningún cambio y
+// devuelve { ok: false } — un resultado esperado ("gana el primero"), no
+// una excepción, porque no fue un mal uso, solo llegó tarde.
+export async function reclamarAnotador(input: {
+  partidaId: string;
+  participanteId: string;
+}): Promise<{ ok: true } | { ok: false }> {
+  const db = getDb();
+
+  return db.transaction(async (tx) => {
+    const [partida] = await tx
+      .select()
+      .from(partidasTable)
+      .where(eq(partidasTable.id, input.partidaId))
+      .for("update");
+
+    if (!partida) {
+      throw new Error("La Partida no existe");
+    }
+    if (partida.estado !== "en_curso") {
+      throw new Error("La Partida no está en curso");
+    }
+
+    const jugadores = await tx
+      .select({ participanteId: partidasParticipantesTable.participanteId })
+      .from(partidasParticipantesTable)
+      .where(eq(partidasParticipantesTable.partidaId, input.partidaId));
+    if (!jugadores.some((j) => j.participanteId === input.participanteId)) {
+      throw new Error("Solo uno de los 6 Participantes de la Partida puede reclamar el Anotador");
+    }
+
+    if (partida.anotadorParticipanteId !== null) {
+      return { ok: false };
+    }
+
+    await tx
+      .update(partidasTable)
+      .set({ anotadorParticipanteId: input.participanteId })
+      .where(eq(partidasTable.id, input.partidaId));
+
+    return { ok: true };
+  });
 }
 
 // Corrige un punto ya confirmado de una Mano anterior (se cargó de más, o

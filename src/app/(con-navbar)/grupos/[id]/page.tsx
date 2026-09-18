@@ -8,7 +8,7 @@ import {
   calcularRatio,
   calcularPartidasGanadasSimples,
 } from "@/domain/grupos";
-import { listarPartidasEnCursoDeGrupo, esAnotadorDePartida } from "@/domain/partidas";
+import { listarPartidasEnCursoDeGrupo } from "@/domain/partidas";
 import { nombresDeEquipo, inicialesDeParticipante } from "@/domain/participantes";
 import { sacarMiembroAction } from "./actions";
 import { Invitar } from "./invitar";
@@ -79,34 +79,26 @@ export default async function GrupoDetallePage({
           <p className="text-sm text-muted">No hay Partidas en curso.</p>
         ) : (
           <ul className="flex flex-col gap-2.5">
-            {partidasEnCurso.map((partida) => {
-              const detalle = (
-                <p>
-                  {nombresDeEquipo(partida.equipo1)}
-                  {" vs. "}
-                  {nombresDeEquipo(partida.equipo2)}
-                </p>
-              );
-              const esAnotador = esAnotadorDePartida(partida, session.user.id);
-
-              return (
-                <li
-                  key={partida.id}
-                  className="rounded-2xl border-2 border-line bg-surface p-3.5 text-sm font-bold shadow-pop"
+            {/* Cualquier miembro del Grupo puede entrar a ver el marcador
+                de una Partida en curso, sea o no su Anotador (ver ticket
+                #33, CONTEXT.md/Anotador) — la fila es un link para todos. */}
+            {partidasEnCurso.map((partida) => (
+              <li
+                key={partida.id}
+                className="rounded-2xl border-2 border-line bg-surface p-3.5 text-sm font-bold shadow-pop"
+              >
+                <a
+                  href={`/grupos/${grupo.id}/partidas/${partida.id}`}
+                  className="text-ink no-underline hover:text-accent"
                 >
-                  {esAnotador ? (
-                    <a
-                      href={`/grupos/${grupo.id}/partidas/${partida.id}`}
-                      className="text-ink no-underline hover:text-accent"
-                    >
-                      {detalle}
-                    </a>
-                  ) : (
-                    <span className="text-ink">{detalle}</span>
-                  )}
-                </li>
-              );
-            })}
+                  <p>
+                    {nombresDeEquipo(partida.equipo1)}
+                    {" vs. "}
+                    {nombresDeEquipo(partida.equipo2)}
+                  </p>
+                </a>
+              </li>
+            ))}
           </ul>
         )}
       </section>

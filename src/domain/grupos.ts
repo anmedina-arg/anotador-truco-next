@@ -208,6 +208,29 @@ export async function listarMiembrosDeGrupo(grupoId: string) {
     .where(eq(gruposParticipantesTable.grupoId, grupoId));
 }
 
+// Chequeo de membresía liviano (ticket #34): un solo SELECT de existencia,
+// sin las estadísticas de Ranking que trae listarMiembrosDeGrupo — pensado
+// para un lugar que se llama repetidas veces (el sondeo del marcador de
+// solo lectura, ver obtenerEstadoDeMarcadorAction), donde traer la fila
+// completa de cada miembro en cada tick sería tráfico de más sin ningún
+// beneficio.
+export async function esMiembroDeGrupo(grupoId: string, participanteId: string): Promise<boolean> {
+  const db = getDb();
+
+  const [fila] = await db
+    .select({ participanteId: gruposParticipantesTable.participanteId })
+    .from(gruposParticipantesTable)
+    .where(
+      and(
+        eq(gruposParticipantesTable.grupoId, grupoId),
+        eq(gruposParticipantesTable.participanteId, participanteId),
+      ),
+    )
+    .limit(1);
+
+  return !!fila;
+}
+
 // Desempate determinístico compartido por los distintos órdenes de
 // Participantes de abajo — sin él, Postgres no garantiza nada entre filas
 // empatadas en el campo que se esté ordenando.

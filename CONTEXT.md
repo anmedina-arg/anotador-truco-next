@@ -33,10 +33,18 @@ _Avoid_: Jugador (usar Participante como término canónico salvo al hablar del
 rol dentro de una Mano/Partida ya en curso).
 
 **Anotador**:
-Rol que ocupa exactamente 1 de los 6 Participantes de una Partida específica
-(no es un rol fijo de la aplicación ni del Grupo). El Anotador es el único
-que puede armar/confirmar los Equipos y cargar los puntos de esa Partida, en
-vivo, mano a mano — esto evita ediciones simultáneas del mismo marcador.
+Rol que ocupa como máximo 1 de los 6 Participantes de una Partida
+específica (no es un rol fijo de la aplicación ni del Grupo, y es
+independiente de quién arma los Equipos al crearla). Se asigna a quien crea
+la Partida si queda jugando en alguno de los dos Equipos; si no, la Partida
+arranca sin Anotador asignado, y cualquiera de los 6 que sí juegan puede
+reclamar el rol en vivo, al abrirla — gana quien lo hace primero, sin
+transferencia posterior (ver ADR 0007). El Anotador es el único que puede
+cargar los puntos de esa Partida en vivo (mano a mano), corregir su Bloque
+o cancelarla — esto evita ediciones simultáneas del mismo marcador. Ver el
+marcador, en cambio, no es exclusivo suyo: cualquier miembro del Grupo
+puede abrir una Partida en curso y seguirla en modo solo lectura, tenga o
+no Anotador asignado todavía.
 
 **Equipo**:
 Agrupación de exactamente 3 Participantes armada para una Partida específica.

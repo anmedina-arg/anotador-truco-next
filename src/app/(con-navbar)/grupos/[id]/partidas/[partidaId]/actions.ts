@@ -10,8 +10,11 @@ import {
   corregirBloqueManualmente,
   crearRevancha,
   crearSiguienteEquipo,
+  reclamarAnotador,
+  obtenerEstadoDeMarcador,
   type TipoDeBloque,
 } from "@/domain/partidas";
+import { esMiembroDeGrupo } from "@/domain/grupos";
 
 // Una Server Action se puede invocar con un POST directo, sin pasar por el
 // tipado de TypeScript del lado del cliente — validar en runtime igual que
@@ -233,4 +236,80 @@ export async function corregirBloqueAction(input: {
   revalidatePath(`/grupos/${input.grupoId}/partidas/${input.partidaId}`);
   revalidatePath(`/grupos/${input.grupoId}`);
   return { ok: true };
+}
+
+export type ResultadoReclamarAnotador = { ok: true } | { ok: false };
+
+// "Sí" de la pregunta "¿Anotás vos?" (ticket #33, CONTEXT.md/Anotador) —
+// args planos, se llama directo desde el componente cliente de la
+// pregunta, no por un <form>. Sin message de error: perder la carrera
+// contra otro de los 6 que reclamó un instante antes es un resultado
+// esperado (ver reclamarAnotador en domain/partidas.ts), no una falla —
+// el cliente cae a solo lectura sin avisar nada. revalidatePath solo hace
+// falta si funcionó: si perdió la carrera, el estado del servidor no
+// cambió por esta llamada.
+export async function reclamarAnotadorAction(input: {
+  grupoId: string;
+  partidaId: string;
+}): Promise<ResultadoReclamarAnotador> {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  // Sin try/catch a propósito: reclamarAnotador solo devuelve {ok:false}
+  // para el caso esperado (perdió la carrera) — lo demás (Partida
+  // inexistente, no en_curso, alguien ajeno a los 6) tira una excepción
+  // real porque no debería poder pasar desde esta pantalla (el botón solo
+  // se muestra a quien corresponde). Dejarla propagarse en vez de
+  // tragársela como un {ok:false} más mantiene visible un bug real si
+  // alguna vez ocurre, en vez de disfrazarlo de carrera perdida.
+  const resultado = await reclamarAnotador({ partidaId: input.partidaId, participanteId: session.user.id });
+
+  if (resultado.ok) {
+    revalidatePath(`/grupos/${input.grupoId}/partidas/${input.partidaId}`);
+    revalidatePath(`/grupos/${input.grupoId}`);
+  }
+  return resultado;
+}
+
+export type ResultadoEstadoMarcador =
+  | {
+      ok: true;
+      estado: "en_curso" | "finalizada" | "cancelada";
+      equipo1Puntos: number;
+      equipo2Puntos: number;
+      tipoDeBloqueActual: TipoDeBloque;
+      parejasYaJugadas: string[];
+    }
+  | { ok: false };
+
+// Sondeo del marcador de solo lectura (ticket #34, ADR 0007) — se llama
+// desde marcador-solo-lectura.tsx cada pocos segundos, nunca desde el
+// tanteador del Anotador (ver ADR 0005: ese sigue sin ningún sondeo).
+// Nunca redirige a /login ni lanza: un tick de sondeo sin sesión, sin
+// membresía del Grupo, o contra una Partida que ya no existe, es
+// simplemente { ok: false } — el cliente se queda con el último estado
+// conocido (ver "si el sondeo falla momentáneamente" en el ticket), no es
+// un error que cortar la sesión. La membresía se valida contra el grupoId
+// real de la Partida (ver obtenerEstadoDeMarcador), nunca contra uno que
+// mande el propio cliente — evitaría el chequeo mandando el grupoId de un
+// Grupo propio junto al partidaId de una Partida ajena.
+export async function obtenerEstadoDeMarcadorAction(partidaId: string): Promise<ResultadoEstadoMarcador> {
+  const session = await auth();
+  if (!session?.user) return { ok: false };
+
+  const estado = await obtenerEstadoDeMarcador(partidaId);
+  if (!estado) return { ok: false };
+
+  if (!(await esMiembroDeGrupo(estado.grupoId, session.user.id))) {
+    return { ok: false };
+  }
+
+  return {
+    ok: true,
+    estado: estado.estado,
+    equipo1Puntos: estado.equipo1Puntos,
+    equipo2Puntos: estado.equipo2Puntos,
+    tipoDeBloqueActual: estado.tipoDeBloqueActual,
+    parejasYaJugadas: estado.parejasYaJugadas,
+  };
 }

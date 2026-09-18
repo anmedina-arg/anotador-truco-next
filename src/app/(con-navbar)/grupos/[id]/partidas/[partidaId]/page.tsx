@@ -1,27 +1,22 @@
+import type { ReactNode } from "react";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import {
   obtenerPartidaConEquipos,
   esAnotadorDePartida,
+  esParticipanteDePartida,
   obtenerParejasPicaPica,
   obtenerParejasYaJugadasEnBloqueActual,
 } from "@/domain/partidas";
-import { obtenerGrupoPorId } from "@/domain/grupos";
+import { obtenerGrupoPorId, esMiembroDeGrupo } from "@/domain/grupos";
 import { nombresDeEquipo, inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
 import { cancelarPartidaAction } from "./actions";
 import { BotonRevancha } from "./boton-revancha";
 import { MarcadorEnVivo } from "./marcador-en-vivo";
+import { MarcadorSoloLectura } from "./marcador-solo-lectura";
+import { PromptAnotador } from "./prompt-anotador";
 import { FosforosTally } from "@/components/fosforos-tally";
-
-const CORTE_MALAS_BUENAS = 15;
-
-// Mismo rótulo/color que la selección de equipos en Nueva Partida — ver
-// formulario.tsx: Equipo 1 siempre es "Nosotros" (accent), Equipo 2 siempre
-// es "Ellos" (accent2).
-const ROL_DE_EQUIPO: Record<1 | 2, { texto: string; colorClase: string }> = {
-  1: { texto: "Nosotros", colorClase: "border-accent bg-accent text-white" },
-  2: { texto: "Ellos", colorClase: "border-accent2 bg-accent2 text-white" },
-};
+import { ROL_DE_EQUIPO, CORTE_MALAS_BUENAS } from "@/components/marcador-equipo";
 
 export default async function PartidaDetallePage({
   params,
@@ -34,17 +29,31 @@ export default async function PartidaDetallePage({
     redirect("/login");
   }
 
-  const partida = await obtenerPartidaConEquipos(partidaId);
+  // Cualquier miembro del Grupo puede abrir esta pantalla (ver ticket #33,
+  // CONTEXT.md/Anotador) — antes esto salía gratis de exigir ser el
+  // Anotador (que siempre era miembro del Grupo, ver crearPartida), pero
+  // ahora hace falta un chequeo propio: alguien de otro Grupo no tiene que
+  // poder entrar solo por conocer el link. Los dos fetches son
+  // independientes (grupoId sale del route param, no de partida) — en
+  // paralelo, mismo criterio que ya usa grupos/[id]/page.tsx.
+  const [partida, esMiembroDelGrupo] = await Promise.all([
+    obtenerPartidaConEquipos(partidaId),
+    esMiembroDeGrupo(grupoId, session.user.id),
+  ]);
   if (!partida || partida.grupoId !== grupoId) {
     notFound();
   }
-
-  // El marcador en vivo es solo para quien anota esta Partida — ver
-  // CONTEXT.md / historia de usuario 26 del ticket #1 (fuera de alcance para
-  // el resto de los Participantes en esta versión).
-  if (!esAnotadorDePartida(partida, session.user.id)) {
+  if (!esMiembroDelGrupo) {
     notFound();
   }
+
+  // Determina qué ve cada quien más abajo: el Anotador tiene los controles
+  // de siempre; el resto del Grupo, el marcador de solo lectura (o la
+  // pregunta de reclamo, ver árbol más abajo) — también gatilla si se
+  // muestran los botones exclusivos del Anotador para una Partida ya
+  // finalizada (Revancha, Siguiente equipo, Cancelar), que antes quedaban
+  // implícitamente ocultos para cualquier otro por el 404 de arriba.
+  const esAnotador = esAnotadorDePartida(partida, session.user.id);
 
   // ventanaInactividadSegundos (ver CONTEXT.md/Grupo) se lee en vivo acá,
   // en cada render server-side — un cambio del admin aplica a la próxima
@@ -59,6 +68,55 @@ export default async function PartidaDetallePage({
   // server-side para no perderla en un reload a mitad de Bloque.
   const parejasYaJugadas =
     partida.estado === "en_curso" ? await obtenerParejasYaJugadasEnBloqueActual(partida) : [];
+
+  // Árbol de acceso al marcador de una Partida en_curso (ver ticket #33):
+  // el Anotador tiene el tanteador interactivo de siempre; sin Anotador
+  // asignado (ver ticket #32) y siendo de los 6 que juegan, la pregunta de
+  // reclamo; cualquier otro caso (ya hay Anotador y no sos vos, o no jugás
+  // esta Partida en particular) cae al marcador de solo lectura.
+  let contenidoEnCurso: ReactNode = null;
+  if (partida.estado === "en_curso" && grupo) {
+    if (esAnotador) {
+      contenidoEnCurso = (
+        <MarcadorEnVivo
+          partidaId={partida.id}
+          grupoId={grupoId}
+          ventanaInactividadSegundos={grupo.ventanaInactividadSegundos}
+          tipoDeBloqueActual={partida.tipoDeBloqueActual}
+          equipo1={{ miembros: partida.equipo1, puntosConfirmados: partida.equipo1Puntos }}
+          equipo2={{ miembros: partida.equipo2, puntosConfirmados: partida.equipo2Puntos }}
+          parejasPicaPica={parejasPicaPica}
+          parejasYaJugadasInicial={parejasYaJugadas}
+        />
+      );
+    } else {
+      const marcadorSoloLectura = (
+        <MarcadorSoloLectura
+          partidaId={partida.id}
+          tipoDeBloqueActual={partida.tipoDeBloqueActual}
+          equipo1={{ miembros: partida.equipo1, puntos: partida.equipo1Puntos }}
+          equipo2={{ miembros: partida.equipo2, puntos: partida.equipo2Puntos }}
+          parejasPicaPica={parejasPicaPica}
+          parejasYaJugadas={parejasYaJugadas}
+        />
+      );
+
+      contenidoEnCurso =
+        partida.anotadorParticipanteId === null && esParticipanteDePartida(partida, session.user.id) ? (
+          <PromptAnotador
+            grupoId={grupoId}
+            partidaId={partida.id}
+            tipoDeBloqueActual={partida.tipoDeBloqueActual}
+            equipo1={{ miembros: partida.equipo1, puntos: partida.equipo1Puntos }}
+            equipo2={{ miembros: partida.equipo2, puntos: partida.equipo2Puntos }}
+            parejasPicaPica={parejasPicaPica}
+            parejasYaJugadas={parejasYaJugadas}
+          />
+        ) : (
+          marcadorSoloLectura
+        );
+    }
+  }
 
   return (
     <main className="mx-auto flex h-[100dvh] max-w-md flex-col gap-4 p-6">
@@ -76,13 +134,22 @@ export default async function PartidaDetallePage({
             {partida.equipoGanador === 1 ? nombresDeEquipo(partida.equipo1) : nombresDeEquipo(partida.equipo2)}
             ).
           </p>
-          <BotonRevancha grupoId={grupoId} partidaId={partida.id} />
-          <a
-            href={`/grupos/${grupoId}/partidas/${partida.id}/siguiente-equipo`}
-            className="block rounded-2xl border-2 border-line bg-surface p-3 text-center text-sm font-display font-bold text-ink no-underline shadow-pop"
-          >
-            Siguiente equipo
-          </a>
+          {/* Revancha y Siguiente equipo son acciones exclusivas del
+              Anotador (ver domain/partidas.ts) — antes quedaban ocultas
+              gratis para cualquier otro por el 404 de la pantalla entera;
+              ahora que cualquier miembro del Grupo puede llegar hasta acá
+              (ver ticket #33), hace falta este chequeo explícito. */}
+          {esAnotador && (
+            <>
+              <BotonRevancha grupoId={grupoId} partidaId={partida.id} />
+              <a
+                href={`/grupos/${grupoId}/partidas/${partida.id}/siguiente-equipo`}
+                className="block rounded-2xl border-2 border-line bg-surface p-3 text-center text-sm font-display font-bold text-ink no-underline shadow-pop"
+              >
+                Siguiente equipo
+              </a>
+            </>
+          )}
         </div>
       )}
       {partida.estado === "cancelada" && (
@@ -92,16 +159,7 @@ export default async function PartidaDetallePage({
       )}
 
       {partida.estado === "en_curso" && grupo ? (
-        <MarcadorEnVivo
-          partidaId={partida.id}
-          grupoId={grupoId}
-          ventanaInactividadSegundos={grupo.ventanaInactividadSegundos}
-          tipoDeBloqueActual={partida.tipoDeBloqueActual}
-          equipo1={{ miembros: partida.equipo1, puntosConfirmados: partida.equipo1Puntos }}
-          equipo2={{ miembros: partida.equipo2, puntosConfirmados: partida.equipo2Puntos }}
-          parejasPicaPica={parejasPicaPica}
-          parejasYaJugadasInicial={parejasYaJugadas}
-        />
+        contenidoEnCurso
       ) : (
         <div className="flex min-h-0 flex-1 justify-around gap-4">
           <MarcadorFinal miembros={partida.equipo1} puntos={partida.equipo1Puntos} equipo={1} />
@@ -109,7 +167,7 @@ export default async function PartidaDetallePage({
         </div>
       )}
 
-      {partida.estado === "en_curso" && (
+      {partida.estado === "en_curso" && esAnotador && (
         <form action={cancelarPartidaAction} className="shrink-0">
           <input type="hidden" name="grupoId" value={grupoId} />
           <input type="hidden" name="partidaId" value={partida.id} />

@@ -7,6 +7,7 @@ import {
   crearGrupo,
   listarGruposDeParticipante,
   listarMiembrosDeGrupo,
+  esMiembroDeGrupo,
   obtenerGrupoMasActivoDeParticipante,
   obtenerGrupoPorId,
   unirseAGrupo,
@@ -241,6 +242,27 @@ describe("listarMiembrosDeGrupo", () => {
     expect(miembros[0].participanteId).toBe(adminId);
     expect(miembros[0].nombre).toBe("Admin de prueba");
     expect(miembros[0].puntos).toBe(0);
+  });
+});
+
+describe("esMiembroDeGrupo", () => {
+  it("es true para el admin", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    expect(await esMiembroDeGrupo(grupo.id, adminId)).toBe(true);
+  });
+
+  it("es false para alguien que no se sumó al Grupo", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    expect(await esMiembroDeGrupo(grupo.id, ajenoId)).toBe(false);
+  });
+
+  it("es true una vez que se suma con el código de invitación", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+    await unirseAGrupo({ codigoInvitacion: grupo.codigoInvitacion, participanteId: ajenoId });
+
+    expect(await esMiembroDeGrupo(grupo.id, ajenoId)).toBe(true);
   });
 });
 

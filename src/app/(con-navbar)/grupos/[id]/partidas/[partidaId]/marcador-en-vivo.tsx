@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
+import type { ParticipanteBasico } from "@/domain/participantes";
 import type { ParejaPicaPica, TipoDeBloque } from "@/domain/partidas";
-import { FosforosTally } from "@/components/fosforos-tally";
+import { MarcadorEquipo, NOMBRE_DE_BLOQUE } from "@/components/marcador-equipo";
 import {
   cargarResultadoDeManoAction,
   corregirPuntoAction,
@@ -11,29 +11,9 @@ import {
   type ResultadoCorregirBloque,
 } from "./actions";
 
-const CORTE_MALAS_BUENAS = 15;
 const PUNTOS_PARA_GANAR = 30;
 const REINTENTOS_FLUSH = 2;
 const BACKOFF_MS = [500, 1500];
-
-// Bloque (ver CONTEXT.md): tipo de la Mano que corresponde jugar a
-// continuación, calculado server-side en cada render — sin timer ni
-// polling en el cliente (ver ticket #20). El texto del badge se queda acá
-// (no es optimista, solo cambia cuando el prop se refresca), pero vive en
-// este componente para poder mostrar el indicador circular del debounce
-// justo al lado, con el mismo estado que ya maneja el debounce.
-const NOMBRE_DE_BLOQUE: Record<TipoDeBloque, string> = {
-  ronda: "Ronda",
-  pica_pica: "Pica-pica",
-};
-
-// Mismo rótulo/color que la selección de equipos en Nueva Partida — ver
-// formulario.tsx: Equipo 1 siempre es "Nosotros" (accent), Equipo 2 siempre
-// es "Ellos" (accent2).
-const ROL_DE_EQUIPO: Record<1 | 2, { texto: string; colorClase: string }> = {
-  1: { texto: "Nosotros", colorClase: "border-accent bg-accent text-white" },
-  2: { texto: "Ellos", colorClase: "border-accent2 bg-accent2 text-white" },
-};
 
 type Pendiente = { equipo1: number; equipo2: number };
 type Puntaje = { equipo1: number; equipo2: number };
@@ -514,10 +494,11 @@ export function MarcadorEnVivo({
       <CorregirBloque onElegir={corregirBloque} />
 
       <div className="flex min-h-0 flex-1 justify-around gap-4">
-        <Marcador
+        <MarcadorEquipo
           miembros={equipo1.miembros}
           puntos={confirmado.equipo1 + pendiente.equipo1}
           equipo={1}
+          interactivo
           deshabilitado={corrigiendoBloque || (esPicaPica && !parejaActiva)}
           tocable={esPicaPica}
           idsActivos={idsActivos}
@@ -526,10 +507,11 @@ export function MarcadorEnVivo({
           onMas={() => tocarMas(1)}
           onMenos={() => tocarMenos(1)}
         />
-        <Marcador
+        <MarcadorEquipo
           miembros={equipo2.miembros}
           puntos={confirmado.equipo2 + pendiente.equipo2}
           equipo={2}
+          interactivo
           deshabilitado={corrigiendoBloque || (esPicaPica && !parejaActiva)}
           tocable={esPicaPica}
           idsActivos={idsActivos}
@@ -656,126 +638,3 @@ function IndicadorDebounce({
   );
 }
 
-function Marcador({
-  miembros,
-  puntos,
-  equipo,
-  deshabilitado,
-  tocable,
-  idsActivos,
-  idsYaJugados,
-  onTocarAvatar,
-  onMas,
-  onMenos,
-}: {
-  miembros: ParticipanteBasico[];
-  puntos: number;
-  equipo: 1 | 2;
-  deshabilitado?: boolean;
-  tocable: boolean;
-  idsActivos: Set<string>;
-  idsYaJugados: Set<string>;
-  onTocarAvatar: (participanteId: string) => void;
-  onMas: () => void;
-  onMenos: () => void;
-}) {
-  const malasOBuenas = puntos > CORTE_MALAS_BUENAS ? "buenas" : "malas";
-  const esBuenas = malasOBuenas === "buenas";
-  const puntosDeLaFase = esBuenas ? puntos - CORTE_MALAS_BUENAS : puntos;
-  const rol = ROL_DE_EQUIPO[equipo];
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col items-center gap-2 rounded-2xl border-2 border-line bg-surface p-4 shadow-pop">
-      <span
-        className={`flex h-9 min-w-[4.5rem] shrink-0 items-center justify-center rounded-full border-2 px-3 font-bold ${rol.colorClase}`}
-      >
-        {rol.texto}
-      </span>
-      <div className="flex shrink-0 flex-wrap justify-center gap-1">
-        {miembros.map((miembro) => {
-          if (!tocable) {
-            // Ronda: los 6 siempre resaltados en su estilo de siempre —
-            // nadie se oscurece, no hay pareja que elegir (ver
-            // CONTEXT.md/Ronda).
-            const claseRonda = `flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold ${
-              equipo === 1 ? "border-accent bg-accent-soft text-accent" : "border-accent2 bg-accent2-soft text-accent2"
-            }`;
-            return (
-              <span key={miembro.participanteId} className={claseRonda}>
-                {inicialesDeParticipante(miembro)}
-              </span>
-            );
-          }
-
-          const yaJugada = idsYaJugados.has(miembro.participanteId);
-          const activo = idsActivos.has(miembro.participanteId);
-
-          // Pica-pica (ver ticket #30, corrección de UI): por default (ni
-          // bien empieza el Bloque, antes de elegir nada) los 6 quedan
-          // oscurecidos por igual — recién la pareja elegida se resalta.
-          // La que ya jugó su Mano en este Bloque queda además
-          // deshabilitada y tachada, para que sea explícito que no se
-          // puede volver a elegir hasta el próximo Bloque de Pica-pica.
-          if (yaJugada) {
-            return (
-              <button
-                key={miembro.participanteId}
-                type="button"
-                disabled
-                className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-line bg-bg text-xs font-bold text-muted line-through opacity-60"
-              >
-                {inicialesDeParticipante(miembro)}
-              </button>
-            );
-          }
-
-          const claseAvatar = `flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-opacity ${
-            equipo === 1 ? "border-accent bg-accent-soft text-accent" : "border-accent2 bg-accent2-soft text-accent2"
-          } ${activo ? "" : "opacity-30"}`;
-
-          return (
-            <button
-              key={miembro.participanteId}
-              type="button"
-              onClick={() => onTocarAvatar(miembro.participanteId)}
-              className={claseAvatar}
-            >
-              {inicialesDeParticipante(miembro)}
-            </button>
-          );
-        })}
-      </div>
-      <p
-        className={`shrink-0 rounded-full px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white ${
-          esBuenas ? "bg-accent2" : "bg-muted"
-        }`}
-      >
-        {malasOBuenas}
-      </p>
-      <p className={`my-1 shrink-0 font-display text-5xl font-extrabold ${esBuenas ? "text-accent" : "text-ink"}`}>
-        {puntos}
-      </p>
-      <div className="flex min-h-0 flex-1 flex-col items-center">
-        <FosforosTally puntos={puntosDeLaFase} colorClase={esBuenas ? "bg-accent2" : "bg-ink"} />
-      </div>
-      <div className="flex shrink-0 gap-2">
-        <button
-          type="button"
-          onClick={onMenos}
-          disabled={deshabilitado}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border-2 border-line bg-surface text-xl font-bold text-ink shadow-pop-sm disabled:opacity-50"
-        >
-          −
-        </button>
-        <button
-          type="button"
-          onClick={onMas}
-          disabled={deshabilitado}
-          className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-xl font-bold text-white shadow-pop-accent-sm disabled:opacity-50"
-        >
-          +
-        </button>
-      </div>
-    </div>
-  );
-}

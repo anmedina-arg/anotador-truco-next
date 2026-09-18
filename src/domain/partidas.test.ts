@@ -24,6 +24,9 @@ import {
   obtenerHistorialEntreJugadores,
   obtenerParejasYaJugadasEnBloqueActual,
   esParticipanteDePartida,
+  reclamarAnotador,
+  obtenerPartidaConEquipos,
+  obtenerEstadoDeMarcador,
 } from "./partidas";
 
 // p0..p6 quedan como miembros del Grupo; p7 registrado pero sin sumarse,
@@ -363,16 +366,6 @@ describe("crearPartida", () => {
 });
 
 describe("Partida sin Anotador asignado (ticket #32)", () => {
-  async function crearPartidaSinAnotadorDePrueba() {
-    const [p0, p1, p2, p3, p4, p5] = participanteIds;
-    return crearPartida({
-      grupoId,
-      equipo1: [p0, p1, p2],
-      equipo2: [p3, p4, p5],
-      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
-    });
-  }
-
   it("rechaza cargar un punto mientras no hay Anotador asignado", async () => {
     const [p0] = participanteIds;
     const partida = await crearPartidaSinAnotadorDePrueba();
@@ -415,6 +408,83 @@ describe("esParticipanteDePartida", () => {
     const partida = { equipo1: [{ participanteId: p0 }, { participanteId: p1 }, { participanteId: p2 }], equipo2: [{ participanteId: p3 }, { participanteId: p4 }, { participanteId: p5 }] };
 
     expect(esParticipanteDePartida(partida, p6)).toBe(false);
+  });
+});
+
+describe("reclamarAnotador", () => {
+  it("deja a un Participante de los 6 como el único Anotador de la Partida", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+
+    const resultado = await reclamarAnotador({ partidaId: partida.id, participanteId: p1 });
+
+    expect(resultado).toEqual({ ok: true });
+    const actualizada = await obtenerPartidaConEquipos(partida.id);
+    expect(actualizada?.anotadorParticipanteId).toBe(p1);
+    // Con el rol ya asignado, cargar puntos deja de estar bloqueado para
+    // quien lo reclamó (ver describe de arriba, "Partida sin Anotador").
+    const conPunto = await anotarPunto({ partidaId: partida.id, solicitanteId: p1, equipo: 1, delta: -1 });
+    expect(conPunto.equipo1Puntos).toBe(0);
+  });
+
+  it("el segundo reclamo sobre la misma Partida no aplica: gana el primero, sin error", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+
+    const primero = await reclamarAnotador({ partidaId: partida.id, participanteId: p0 });
+    const segundo = await reclamarAnotador({ partidaId: partida.id, participanteId: p1 });
+
+    expect(primero).toEqual({ ok: true });
+    expect(segundo).toEqual({ ok: false });
+    const actualizada = await obtenerPartidaConEquipos(partida.id);
+    expect(actualizada?.anotadorParticipanteId).toBe(p0);
+  });
+
+  it("exactamente uno de dos reclamos verdaderamente simultáneos gana (FOR UPDATE serializa)", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+
+    const [resultadoA, resultadoB] = await Promise.all([
+      reclamarAnotador({ partidaId: partida.id, participanteId: p0 }),
+      reclamarAnotador({ partidaId: partida.id, participanteId: p1 }),
+    ]);
+
+    const ganadores = [resultadoA, resultadoB].filter((r) => r.ok);
+    expect(ganadores).toHaveLength(1);
+    const actualizada = await obtenerPartidaConEquipos(partida.id);
+    expect([p0, p1]).toContain(actualizada?.anotadorParticipanteId);
+  });
+
+  it("rechaza si la Partida ya tiene Anotador asignado desde que se creó", async () => {
+    const [, p1] = participanteIds;
+    const partida = await crearPartidaDePrueba(); // p0 ya es Anotador
+
+    const resultado = await reclamarAnotador({ partidaId: partida.id, participanteId: p1 });
+
+    expect(resultado).toEqual({ ok: false });
+  });
+
+  it("rechaza si quien reclama no juega esa Partida", async () => {
+    const [, , , , , , p6] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+
+    await expect(reclamarAnotador({ partidaId: partida.id, participanteId: p6 })).rejects.toThrow(
+      "Solo uno de los 6 Participantes de la Partida puede reclamar el Anotador",
+    );
+  });
+
+  it("rechaza si la Partida no está en_curso", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+    // Sin Anotador todavía no hay forma de cancelarla por las buenas (ver
+    // describe de arriba) -- se siembra "cancelada" directo por DB, como ya
+    // hace el resto de la suite para arrancar en un estado puntual.
+    const db = getDb();
+    await db.update(partidasTable).set({ estado: "cancelada" }).where(eq(partidasTable.id, partida.id));
+
+    await expect(reclamarAnotador({ partidaId: partida.id, participanteId: p0 })).rejects.toThrow(
+      "La Partida no está en curso",
+    );
   });
 });
 
@@ -819,6 +889,17 @@ async function crearPartidaDePrueba() {
   return crearPartida({
     grupoId,
     anotadorParticipanteId: p0,
+    equipo1: [p0, p1, p2],
+    equipo2: [p3, p4, p5],
+    picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+  });
+}
+
+// Ídem, sin Anotador asignado (ticket #32: quien la crea no juega).
+async function crearPartidaSinAnotadorDePrueba() {
+  const [p0, p1, p2, p3, p4, p5] = participanteIds;
+  return crearPartida({
+    grupoId,
     equipo1: [p0, p1, p2],
     equipo2: [p3, p4, p5],
     picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
@@ -1513,6 +1594,66 @@ describe("obtenerParejasYaJugadasEnBloqueActual", () => {
 
     const resultado = await obtenerParejasYaJugadasEnBloqueActual(mano);
     expect(resultado).toEqual([p1]);
+  });
+});
+
+describe("obtenerEstadoDeMarcador", () => {
+  it("devuelve null si la Partida no existe", async () => {
+    const resultado = await obtenerEstadoDeMarcador("00000000-0000-0000-0000-000000000000");
+    expect(resultado).toBeNull();
+  });
+
+  it("trae puntaje, estado y grupoId en Ronda, sin ninguna pareja ya jugada", async () => {
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { equipo1Puntos: 3, equipo2Puntos: 1 });
+
+    const resultado = await obtenerEstadoDeMarcador(partida.id);
+
+    expect(resultado).toEqual({
+      grupoId,
+      estado: "en_curso",
+      equipo1Puntos: 3,
+      equipo2Puntos: 1,
+      tipoDeBloqueActual: "ronda",
+      parejasYaJugadas: [],
+    });
+  });
+
+  it("en Pica-pica, incluye las parejas ya jugadas en el Bloque abierto", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
+    });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 0,
+      deltaEquipo2: 1,
+      parejaActivaParticipanteId: p1,
+    });
+
+    const resultado = await obtenerEstadoDeMarcador(partida.id);
+
+    expect(resultado?.tipoDeBloqueActual).toBe("pica_pica");
+    expect(resultado?.equipo1Puntos).toBe(1);
+    expect(resultado?.equipo2Puntos).toBe(1);
+    expect(new Set(resultado?.parejasYaJugadas)).toEqual(new Set([p0, p1]));
+  });
+
+  it("refleja una Partida finalizada o cancelada en el campo estado", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    const resultado = await obtenerEstadoDeMarcador(partida.id);
+    expect(resultado?.estado).toBe("cancelada");
   });
 });
 
