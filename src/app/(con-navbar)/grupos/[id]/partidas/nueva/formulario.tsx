@@ -22,14 +22,32 @@ export function FormularioNuevaPartida({
   const [estado, accion, pendiente] = useActionState(crearPartidaAction, undefined);
   // Estado de cliente para saber en vivo cuándo los dos Equipos ya tienen
   // sus 3 Participantes cada uno — recién ahí tiene sentido mostrar el
-  // armado de parejas de Pica-pica (ver ADR 0006). Los radios siguen
-  // mandando "equipo-<id>" en el FormData como antes (controlados acá para
-  // poder reaccionar, no solo para el submit final).
+  // armado de parejas de Pica-pica (ver ADR 0006). Cada Participante manda
+  // su "equipo-<id>" al FormData por un input oculto (1/2/vacío), sincronizado
+  // con este estado — no son radios nativos porque hace falta poder
+  // deseleccionar tocando de nuevo el mismo Equipo (ver elegirEquipo).
   const [equipos, setEquipos] = useState<Record<string, 1 | 2>>({});
 
   const equipo1 = miembros.filter((m) => equipos[m.participanteId] === 1);
   const equipo2 = miembros.filter((m) => equipos[m.participanteId] === 2);
   const equiposCompletos = equipo1.length === 3 && equipo2.length === 3;
+  const equipo1Lleno = equipo1.length >= 3;
+  const equipo2Lleno = equipo2.length >= 3;
+
+  // Tocar el Equipo en el que ya está lo saca (deselecciona) en vez de no
+  // hacer nada — antes, con radios nativos, una vez elegido no había forma
+  // de deshacerlo sin elegir el otro Equipo.
+  function elegirEquipo(participanteId: string, equipo: 1 | 2) {
+    setEquipos((anterior) => {
+      const copia = { ...anterior };
+      if (copia[participanteId] === equipo) {
+        delete copia[participanteId];
+      } else {
+        copia[participanteId] = equipo;
+      }
+      return copia;
+    });
+  }
 
   const { parejas, seleccionado, tocar, completas } = usePicaPicaParejas(equipo1, equipo2);
   const modal = useModalDeParejas(equiposCompletos);
@@ -46,42 +64,44 @@ export function FormularioNuevaPartida({
       </p>
 
       <ul className="flex flex-col gap-2.5">
-        {miembros.map((miembro) => (
-          <li
-            key={miembro.participanteId}
-            className="flex items-center justify-between rounded-2xl border-2 border-line bg-surface p-3"
-          >
-            <span className="font-bold text-ink">{miembro.nombre || miembro.email}</span>
-            <div className="flex gap-2 text-sm">
-              <label
-                className="flex h-9 min-w-[4.5rem] cursor-pointer items-center justify-center rounded-full border-2 border-line px-3 font-bold text-muted transition-colors [&:has(:checked)]:border-accent [&:has(:checked)]:bg-accent [&:has(:checked)]:text-white [&:has(:focus-visible)]:ring-2 [&:has(:focus-visible)]:ring-accent [&:has(:focus-visible)]:ring-offset-2"
-              >
-                <input
-                  type="radio"
-                  name={`equipo-${miembro.participanteId}`}
-                  value="1"
-                  checked={equipos[miembro.participanteId] === 1}
-                  onChange={() => setEquipos((anterior) => ({ ...anterior, [miembro.participanteId]: 1 }))}
-                  className="sr-only"
-                />
-                Nosotros
-              </label>
-              <label
-                className="flex h-9 min-w-[4.5rem] cursor-pointer items-center justify-center rounded-full border-2 border-line px-3 font-bold text-muted transition-colors [&:has(:checked)]:border-accent2 [&:has(:checked)]:bg-accent2 [&:has(:checked)]:text-white [&:has(:focus-visible)]:ring-2 [&:has(:focus-visible)]:ring-accent2 [&:has(:focus-visible)]:ring-offset-2"
-              >
-                <input
-                  type="radio"
-                  name={`equipo-${miembro.participanteId}`}
-                  value="2"
-                  checked={equipos[miembro.participanteId] === 2}
-                  onChange={() => setEquipos((anterior) => ({ ...anterior, [miembro.participanteId]: 2 }))}
-                  className="sr-only"
-                />
-                Ellos
-              </label>
-            </div>
-          </li>
-        ))}
+        {miembros.map((miembro) => {
+          const equipoDeEste = equipos[miembro.participanteId];
+          return (
+            <li
+              key={miembro.participanteId}
+              className="flex items-center justify-between rounded-2xl border-2 border-line bg-surface p-3"
+            >
+              <span className="font-bold text-ink">{miembro.nombre || miembro.email}</span>
+              <input type="hidden" name={`equipo-${miembro.participanteId}`} value={equipoDeEste ?? ""} />
+              <div className="flex gap-2 text-sm">
+                <button
+                  type="button"
+                  disabled={equipoDeEste !== 1 && equipo1Lleno}
+                  onClick={() => elegirEquipo(miembro.participanteId, 1)}
+                  className={`flex h-9 min-w-[4.5rem] items-center justify-center rounded-full border-2 px-3 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    equipoDeEste === 1
+                      ? "border-accent bg-accent text-white"
+                      : "border-line text-muted"
+                  }`}
+                >
+                  Nosotros
+                </button>
+                <button
+                  type="button"
+                  disabled={equipoDeEste !== 2 && equipo2Lleno}
+                  onClick={() => elegirEquipo(miembro.participanteId, 2)}
+                  className={`flex h-9 min-w-[4.5rem] items-center justify-center rounded-full border-2 px-3 font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                    equipoDeEste === 2
+                      ? "border-accent2 bg-accent2 text-white"
+                      : "border-line text-muted"
+                  }`}
+                >
+                  Ellos
+                </button>
+              </div>
+            </li>
+          );
+        })}
       </ul>
 
       {equiposCompletos && <ResumenDeParejasPicaPica parejas={parejas} onAbrir={modal.abrir} />}
