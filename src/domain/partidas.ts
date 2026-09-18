@@ -231,8 +231,9 @@ async function obtenerPartidaFinalizadaDelAnotador(
 // corrección del ADR 0006, ticket #29: el orden entre Bloques de Pica-pica
 // no es fijo), solo ordena cómo se muestran ("Pareja 1/2/3", ticket #26).
 // crearRevancha usa esto para copiarlas tal cual a la Partida nueva sin
-// tener que reconstruirlas.
-async function obtenerParejasPicaPica(partidaId: string): Promise<ParejaPicaPica[]> {
+// tener que reconstruirlas; el marcador en vivo (ticket #30) la usa para
+// saber qué avatares corresponden a qué pareja.
+export async function obtenerParejasPicaPica(partidaId: string): Promise<ParejaPicaPica[]> {
   const db = getDb();
 
   const filas = await db

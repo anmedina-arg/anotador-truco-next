@@ -90,6 +90,7 @@ export async function cargarResultadoDeManoAction(input: {
   partidaId: string;
   deltaEquipo1: number;
   deltaEquipo2: number;
+  parejaActivaParticipanteId?: string;
 }): Promise<ResultadoCargarMano> {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -101,6 +102,7 @@ export async function cargarResultadoDeManoAction(input: {
       solicitanteId: session.user.id,
       deltaEquipo1: input.deltaEquipo1,
       deltaEquipo2: input.deltaEquipo2,
+      parejaActivaParticipanteId: input.parejaActivaParticipanteId,
     });
   } catch (error) {
     if (error instanceof Error) {

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
-import type { TipoDeBloque } from "@/domain/partidas";
+import type { ParejaPicaPica, TipoDeBloque } from "@/domain/partidas";
 import { FosforosTally } from "@/components/fosforos-tally";
 import {
   cargarResultadoDeManoAction,
@@ -90,6 +90,7 @@ export function MarcadorEnVivo({
   tipoDeBloqueActual,
   equipo1,
   equipo2,
+  parejasPicaPica,
 }: {
   partidaId: string;
   grupoId: string;
@@ -97,6 +98,7 @@ export function MarcadorEnVivo({
   tipoDeBloqueActual: TipoDeBloque;
   equipo1: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
   equipo2: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
+  parejasPicaPica: ParejaPicaPica[];
 }) {
   // Arranca en {0,0} tanto en el render server-side como en el primer
   // render del cliente (nunca lee sessionStorage acá): si el inicializador
@@ -136,6 +138,15 @@ export function MarcadorEnVivo({
   // (la misma clase de bug que el flush-before-correct de abajo previene
   // para toques que ya estaban pendientes *antes* de pedir la corrección).
   const [corrigiendoBloque, setCorrigiendoBloque] = useState(false);
+  // Pareja activa de Pica-pica (ver ADR 0006, ticket #29/#30): el Anotador
+  // la elige tocando a cualquiera de los 2 integrantes entre los avatares
+  // que ya se muestran arriba de cada Equipo — el orden entre Bloques de
+  // Pica-pica no es fijo, así que no hay forma de que la app la adivine
+  // sola. Se resetea a null apenas se confirma la Mano contra el servidor
+  // (ver flush) o se corrige el Bloque a mano (ver corregirBloque). Solo
+  // importa mientras tipoDeBloqueActual es "pica_pica" — en Ronda queda sin
+  // usar.
+  const [parejaActiva, setParejaActiva] = useState<ParejaPicaPica | null>(null);
   const [, startTransition] = useTransition();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -151,6 +162,10 @@ export function MarcadorEnVivo({
   pendienteRef.current = pendiente;
   const confirmadoRef = useRef(confirmado);
   confirmadoRef.current = confirmado;
+  // El flush manda la pareja activa vigente en el momento en que se manda
+  // (no la de cuando arrancó el toque) — ver ticket #30.
+  const parejaActivaRef = useRef(parejaActiva);
+  parejaActivaRef.current = parejaActiva;
 
   const actualizarPendiente = useCallback(
     (actualizar: (anterior: Pendiente) => Pendiente) => {
@@ -191,6 +206,7 @@ export function MarcadorEnVivo({
             partidaId,
             deltaEquipo1: snapshot.equipo1,
             deltaEquipo2: snapshot.equipo2,
+            parejaActivaParticipanteId: parejaActivaRef.current?.jugadorEquipo1Id,
           });
 
           if (!resultado.ok) {
@@ -230,6 +246,12 @@ export function MarcadorEnVivo({
           // en el finally de abajo.
           if (quedaPendiente) {
             void flush();
+          } else {
+            // La Mano quedó del todo confirmada (no una recarga parcial de
+            // taps que llegaron mientras este flush estaba en vuelo, ver
+            // arriba) — recién ahí tiene sentido pedir de nuevo la pareja
+            // activa para la Mano siguiente (ver ticket #30).
+            setParejaActiva(null);
           }
           return;
         } catch {
@@ -265,6 +287,13 @@ export function MarcadorEnVivo({
       try {
         cortarDebounce();
         await flush();
+        // El flush de arriba ya manda cualquier toque pendiente con la
+        // pareja activa que tenía ANTES de esta corrección (la que
+        // corresponde a esa Mano) — recién ahora, con eso ya resuelto, se
+        // limpia: si no había nada pendiente, flush() no la reseteó sola
+        // (ver ticket #30), y de cualquier forma el Bloque está a punto de
+        // cambiar de tipo.
+        setParejaActiva(null);
         return await corregirBloqueAction({ grupoId, partidaId, tipo });
       } finally {
         setCorrigiendoBloque(false);
@@ -365,6 +394,38 @@ export function MarcadorEnVivo({
     });
   };
 
+  const esPicaPica = tipoDeBloqueActual === "pica_pica";
+
+  // Elegir la pareja activa tocando los avatares (ver ADR 0006, ticket
+  // #30): tocar a un integrante de la pareja ya elegida la deselecciona;
+  // tocar a un integrante de otra pareja cambia la selección. Solo importa
+  // durante Pica-pica — en Ronda los avatares ni siquiera son tocables (ver
+  // Marcador más abajo).
+  const tocarAvatar = useCallback(
+    (participanteId: string) => {
+      if (
+        parejaActiva &&
+        (parejaActiva.jugadorEquipo1Id === participanteId || parejaActiva.jugadorEquipo2Id === participanteId)
+      ) {
+        setParejaActiva(null);
+        return;
+      }
+      const pareja = parejasPicaPica.find(
+        (p) => p.jugadorEquipo1Id === participanteId || p.jugadorEquipo2Id === participanteId,
+      );
+      setParejaActiva(pareja ?? null);
+    },
+    [parejaActiva, parejasPicaPica],
+  );
+
+  // null = los 6 avatares en su estilo neutro (Ronda, o Pica-pica sin
+  // pareja elegida todavía) — con una pareja elegida, esos 2 IDs son los
+  // que se quedan resaltados y el resto se oscurece (ver Marcador).
+  const idsDeParejaActiva = useMemo(
+    () => (esPicaPica && parejaActiva ? new Set([parejaActiva.jugadorEquipo1Id, parejaActiva.jugadorEquipo2Id]) : null),
+    [esPicaPica, parejaActiva],
+  );
+
   const colorBadge = tipoDeBloqueActual === "pica_pica" ? "text-accent2" : "text-accent";
 
   return (
@@ -385,7 +446,10 @@ export function MarcadorEnVivo({
           miembros={equipo1.miembros}
           puntos={confirmado.equipo1 + pendiente.equipo1}
           equipo={1}
-          deshabilitado={corrigiendoBloque}
+          deshabilitado={corrigiendoBloque || (esPicaPica && !parejaActiva)}
+          tocable={esPicaPica}
+          idsDeParejaActiva={idsDeParejaActiva}
+          onTocarAvatar={tocarAvatar}
           onMas={() => tocarMas(1)}
           onMenos={() => tocarMenos(1)}
         />
@@ -393,7 +457,10 @@ export function MarcadorEnVivo({
           miembros={equipo2.miembros}
           puntos={confirmado.equipo2 + pendiente.equipo2}
           equipo={2}
-          deshabilitado={corrigiendoBloque}
+          deshabilitado={corrigiendoBloque || (esPicaPica && !parejaActiva)}
+          tocable={esPicaPica}
+          idsDeParejaActiva={idsDeParejaActiva}
+          onTocarAvatar={tocarAvatar}
           onMas={() => tocarMas(2)}
           onMenos={() => tocarMenos(2)}
         />
@@ -520,6 +587,9 @@ function Marcador({
   puntos,
   equipo,
   deshabilitado,
+  tocable,
+  idsDeParejaActiva,
+  onTocarAvatar,
   onMas,
   onMenos,
 }: {
@@ -527,6 +597,9 @@ function Marcador({
   puntos: number;
   equipo: 1 | 2;
   deshabilitado?: boolean;
+  tocable: boolean;
+  idsDeParejaActiva: Set<string> | null;
+  onTocarAvatar: (participanteId: string) => void;
   onMas: () => void;
   onMenos: () => void;
 }) {
@@ -543,16 +616,35 @@ function Marcador({
         {rol.texto}
       </span>
       <div className="flex shrink-0 flex-wrap justify-center gap-1">
-        {miembros.map((miembro) => (
-          <span
-            key={miembro.participanteId}
-            className={`flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold ${
-              equipo === 1 ? "border-accent bg-accent-soft text-accent" : "border-accent2 bg-accent2-soft text-accent2"
-            }`}
-          >
-            {inicialesDeParticipante(miembro)}
-          </span>
-        ))}
+        {miembros.map((miembro) => {
+          // Pica-pica (ver ticket #30): con una pareja elegida, quien no es
+          // parte de ella se oscurece — idsDeParejaActiva es null en Ronda
+          // (nadie se oscurece, ver CONTEXT.md/Ronda) y también en
+          // Pica-pica mientras no se elige pareja todavía.
+          const oscurecido = idsDeParejaActiva !== null && !idsDeParejaActiva.has(miembro.participanteId);
+          const claseAvatar = `flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-opacity ${
+            equipo === 1 ? "border-accent bg-accent-soft text-accent" : "border-accent2 bg-accent2-soft text-accent2"
+          } ${oscurecido ? "opacity-30" : ""}`;
+
+          if (!tocable) {
+            return (
+              <span key={miembro.participanteId} className={claseAvatar}>
+                {inicialesDeParticipante(miembro)}
+              </span>
+            );
+          }
+
+          return (
+            <button
+              key={miembro.participanteId}
+              type="button"
+              onClick={() => onTocarAvatar(miembro.participanteId)}
+              className={claseAvatar}
+            >
+              {inicialesDeParticipante(miembro)}
+            </button>
+          );
+        })}
       </div>
       <p
         className={`shrink-0 rounded-full px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-white ${

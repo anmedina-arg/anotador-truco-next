@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { obtenerPartidaConEquipos, esAnotadorDePartida } from "@/domain/partidas";
+import { obtenerPartidaConEquipos, esAnotadorDePartida, obtenerParejasPicaPica } from "@/domain/partidas";
 import { obtenerGrupoPorId } from "@/domain/grupos";
 import { nombresDeEquipo, inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
 import { cancelarPartidaAction } from "./actions";
@@ -45,6 +45,10 @@ export default async function PartidaDetallePage({
   // en cada render server-side — un cambio del admin aplica a la próxima
   // vez que se carga esta pantalla, sin polling (ver ADR 0005).
   const grupo = partida.estado === "en_curso" ? await obtenerGrupoPorId(grupoId) : null;
+  // Solo hace falta para el marcador en vivo, y ahí solo cuando el Bloque
+  // vigente es Pica-pica — pero pedirlas siempre es más simple que agregar
+  // un caso especial, y son 3 filas nomás (ver ticket #30).
+  const parejasPicaPica = partida.estado === "en_curso" ? await obtenerParejasPicaPica(partida.id) : [];
 
   return (
     <main className="mx-auto flex h-[100dvh] max-w-md flex-col gap-4 p-6">
@@ -85,6 +89,7 @@ export default async function PartidaDetallePage({
           tipoDeBloqueActual={partida.tipoDeBloqueActual}
           equipo1={{ miembros: partida.equipo1, puntosConfirmados: partida.equipo1Puntos }}
           equipo2={{ miembros: partida.equipo2, puntosConfirmados: partida.equipo2Puntos }}
+          parejasPicaPica={parejasPicaPica}
         />
       ) : (
         <div className="flex min-h-0 flex-1 justify-around gap-4">
