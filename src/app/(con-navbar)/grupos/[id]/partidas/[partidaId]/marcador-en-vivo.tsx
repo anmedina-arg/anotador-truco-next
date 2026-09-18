@@ -91,6 +91,7 @@ export function MarcadorEnVivo({
   equipo1,
   equipo2,
   parejasPicaPica,
+  parejasYaJugadasInicial,
 }: {
   partidaId: string;
   grupoId: string;
@@ -99,6 +100,13 @@ export function MarcadorEnVivo({
   equipo1: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
   equipo2: { miembros: ParticipanteBasico[]; puntosConfirmados: number };
   parejasPicaPica: ParejaPicaPica[];
+  // jugadorEquipo1Id de cada pareja que ya jugó su Mano dentro del Bloque
+  // de Pica-pica todavía abierto (ver domain/partidas.ts,
+  // obtenerParejasYaJugadasEnBloqueActual) — solo se usa para inicializar
+  // el estado de abajo, nunca se vuelve a leer de este prop después del
+  // primer render (mismo criterio que `confirmado`, ver ese comentario):
+  // de ahí en más, este mismo componente ya lleva la cuenta sola.
+  parejasYaJugadasInicial: string[];
 }) {
   // Arranca en {0,0} tanto en el render server-side como en el primer
   // render del cliente (nunca lee sessionStorage acá): si el inicializador
@@ -151,9 +159,14 @@ export function MarcadorEnVivo({
   // Pica-pica (ver CONTEXT.md/Pica-pica) — una vez que ya jugó la suya en
   // este Bloque, no tiene que poder volver a elegirse hasta el próximo
   // Bloque de Pica-pica. Se identifica cada pareja por jugadorEquipo1Id
-  // (único entre las 3). Se vacía apenas se sale de Pica-pica (ver el
-  // useEffect más abajo) o se corrige el Bloque a mano (ver corregirBloque).
-  const [parejasYaJugadas, setParejasYaJugadas] = useState<Set<string>>(new Set());
+  // (único entre las 3). Arranca con lo que ya está persistido server-side
+  // (parejasYaJugadasInicial) para no perderlo en un reload a mitad de
+  // Bloque; de ahí en más este componente la lleva sola, sumando cada Mano
+  // que confirma (ver flush) y vaciándola al salir de Pica-pica (ver el
+  // useEffect más abajo) o al corregir el Bloque a mano (ver corregirBloque).
+  const [parejasYaJugadas, setParejasYaJugadas] = useState<Set<string>>(
+    () => new Set(parejasYaJugadasInicial),
+  );
   const [, startTransition] = useTransition();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -422,6 +435,19 @@ export function MarcadorEnVivo({
   };
 
   const esPicaPica = tipoDeBloqueActual === "pica_pica";
+
+  // Si ya jugaron 2 de las 3 parejas en este Bloque, la que queda es la
+  // única posible para la Mano que sigue — se elige sola, sin depender de
+  // un toque más del Anotador (se ahorra ese toque). No hace nada mientras
+  // ya hay una pareja activa (no hay que pisarla) ni si todavía quedan 2 o
+  // más disponibles (ahí sí hay algo para elegir).
+  useEffect(() => {
+    if (!esPicaPica || parejaActiva) return;
+    const disponibles = parejasPicaPica.filter((p) => !parejasYaJugadas.has(p.jugadorEquipo1Id));
+    if (disponibles.length === 1) {
+      setParejaActiva(disponibles[0]);
+    }
+  }, [esPicaPica, parejaActiva, parejasPicaPica, parejasYaJugadas]);
 
   // Elegir la pareja activa tocando los avatares (ver ADR 0006, ticket
   // #30): tocar a un integrante de la pareja ya elegida la deselecciona;

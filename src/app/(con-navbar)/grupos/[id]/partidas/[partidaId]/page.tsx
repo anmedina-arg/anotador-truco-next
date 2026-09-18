@@ -1,6 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { obtenerPartidaConEquipos, esAnotadorDePartida, obtenerParejasPicaPica } from "@/domain/partidas";
+import {
+  obtenerPartidaConEquipos,
+  esAnotadorDePartida,
+  obtenerParejasPicaPica,
+  obtenerParejasYaJugadasEnBloqueActual,
+} from "@/domain/partidas";
 import { obtenerGrupoPorId } from "@/domain/grupos";
 import { nombresDeEquipo, inicialesDeParticipante, type ParticipanteBasico } from "@/domain/participantes";
 import { cancelarPartidaAction } from "./actions";
@@ -49,6 +54,11 @@ export default async function PartidaDetallePage({
   // vigente es Pica-pica — pero pedirlas siempre es más simple que agregar
   // un caso especial, y son 3 filas nomás (ver ticket #30).
   const parejasPicaPica = partida.estado === "en_curso" ? await obtenerParejasPicaPica(partida.id) : [];
+  // Qué parejas ya jugaron su Mano en el Bloque de Pica-pica todavía
+  // abierto (ver corrección de UI sobre el ticket #30) — se persiste
+  // server-side para no perderla en un reload a mitad de Bloque.
+  const parejasYaJugadas =
+    partida.estado === "en_curso" ? await obtenerParejasYaJugadasEnBloqueActual(partida) : [];
 
   return (
     <main className="mx-auto flex h-[100dvh] max-w-md flex-col gap-4 p-6">
@@ -90,6 +100,7 @@ export default async function PartidaDetallePage({
           equipo1={{ miembros: partida.equipo1, puntosConfirmados: partida.equipo1Puntos }}
           equipo2={{ miembros: partida.equipo2, puntosConfirmados: partida.equipo2Puntos }}
           parejasPicaPica={parejasPicaPica}
+          parejasYaJugadasInicial={parejasYaJugadas}
         />
       ) : (
         <div className="flex min-h-0 flex-1 justify-around gap-4">

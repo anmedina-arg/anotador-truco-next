@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import type { ParticipanteBasico } from "./participantes";
 import { nivelDeVictoria, calcularEstadisticasRanking } from "./grupos";
@@ -246,6 +246,39 @@ export async function obtenerParejasPicaPica(partidaId: string): Promise<ParejaP
     .orderBy(picaPicaParejaTable.posicion);
 
   return filas;
+}
+
+// Qué parejas ya jugaron su Mano dentro del Bloque de Pica-pica vigente
+// (ver Marcador en vivo, ticket #30 — corrección de UI): cada pareja juega
+// exactamente 1 de las 3 Manos de un Bloque (ver CONTEXT.md/Pica-pica), así
+// que una vez confirmada su Mano no puede volver a elegirse hasta el
+// próximo Bloque. Esto se llevaba solo en memoria del cliente hasta ahora
+// (se perdía en un reload a mitad de Bloque) — se deriva acá de
+// pica_pica_mano: como cada Mano de Pica-pica confirmada inserta una fila
+// ahí en la misma transacción que actualiza manosJugadasEnBloqueActual (ver
+// cargarResultadoDeMano), las últimas "manosJugadasEnBloqueActual" filas ya
+// insertadas para esta Partida son exactamente las del Bloque todavía
+// abierto — ni una corrección manual de Bloque (que resetea ese contador a
+// 0 sin tocar el historial) ni Manos de un Bloque de Pica-pica anterior
+// dentro de la misma Partida se cuelan. Devuelve los jugadorEquipo1Id de
+// esas parejas (mismo identificador que ya usa el resto del código).
+export async function obtenerParejasYaJugadasEnBloqueActual(partida: {
+  id: string;
+  manosJugadasEnBloqueActual: number;
+}): Promise<string[]> {
+  if (partida.manosJugadasEnBloqueActual === 0) {
+    return [];
+  }
+
+  const db = getDb();
+  const filas = await db
+    .select({ jugadorAId: picaPicaManoTable.jugadorAId })
+    .from(picaPicaManoTable)
+    .where(eq(picaPicaManoTable.partidaId, partida.id))
+    .orderBy(desc(picaPicaManoTable.creadaEn))
+    .limit(partida.manosJugadasEnBloqueActual);
+
+  return filas.map((f) => f.jugadorAId);
 }
 
 // Repite la última Partida con un tap (ticket #12): mismos 6 Participantes,

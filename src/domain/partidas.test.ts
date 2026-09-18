@@ -22,6 +22,7 @@ import {
   cancelarPartida,
   corregirBloqueManualmente,
   obtenerHistorialEntreJugadores,
+  obtenerParejasYaJugadasEnBloqueActual,
 } from "./partidas";
 
 // p0..p6 quedan como miembros del Grupo; p7 registrado pero sin sumarse,
@@ -1338,6 +1339,110 @@ describe("cargarResultadoDeMano", () => {
         .where(eq(picaPicaManoTable.partidaId, partida.id));
       expect(filas).toHaveLength(1);
     });
+  });
+});
+
+// Corrección de UI sobre el ticket #30: qué parejas ya jugaron su Mano en
+// el Bloque de Pica-pica todavía abierto, para deshabilitarlas en el
+// marcador — se persiste server-side (antes solo vivía en memoria del
+// cliente, y un reload a mitad de Bloque la perdía).
+describe("obtenerParejasYaJugadasEnBloqueActual", () => {
+  it("no hay ninguna con manosJugadasEnBloqueActual en 0 (Bloque recién empezado)", async () => {
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica", manosJugadasEnBloqueActual: 0 });
+
+    const resultado = await obtenerParejasYaJugadasEnBloqueActual(partida);
+    expect(resultado).toEqual([]);
+  });
+
+  it("devuelve las parejas de las Manos ya confirmadas en este Bloque", async () => {
+    const [p0, p1] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
+    });
+    const mano2 = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p1,
+    });
+
+    const resultado = await obtenerParejasYaJugadasEnBloqueActual(mano2);
+    expect(new Set(resultado)).toEqual(new Set([p0, p1]));
+  });
+
+  it("una corrección manual de Bloque deja el Bloque como recién empezado, aunque haya Manos previas", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
+    });
+
+    const corregida = await corregirBloqueManualmente({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      tipo: "pica_pica",
+    });
+
+    const resultado = await obtenerParejasYaJugadasEnBloqueActual(corregida);
+    expect(resultado).toEqual([]);
+  });
+
+  it("no mezcla Manos de un Bloque de Pica-pica anterior de la misma Partida", async () => {
+    const [p0, p1, p2] = participanteIds;
+    const partida = await crearPartidaDePrueba();
+
+    // Bloque de Pica-pica anterior: sus 3 Manos completan el Bloque (vuelve
+    // a Ronda con este puntaje, por debajo del umbral de inicio).
+    await sembrarMarcador(partida.id, { tipoDeBloqueActual: "pica_pica" });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p0,
+    });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p1,
+    });
+    await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p2,
+    });
+
+    // Bloque de Pica-pica nuevo (corrección manual, para no depender de
+    // cruzar umbrales) — solo 1 Mano confirmada hasta ahora.
+    await corregirBloqueManualmente({ partidaId: partida.id, solicitanteId: p0, tipo: "pica_pica" });
+    const mano = await cargarResultadoDeMano({
+      partidaId: partida.id,
+      solicitanteId: p0,
+      deltaEquipo1: 1,
+      deltaEquipo2: 0,
+      parejaActivaParticipanteId: p1,
+    });
+
+    const resultado = await obtenerParejasYaJugadasEnBloqueActual(mano);
+    expect(resultado).toEqual([p1]);
   });
 });
 
