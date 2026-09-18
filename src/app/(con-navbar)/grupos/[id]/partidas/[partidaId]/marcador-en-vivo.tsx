@@ -147,6 +147,13 @@ export function MarcadorEnVivo({
   // importa mientras tipoDeBloqueActual es "pica_pica" — en Ronda queda sin
   // usar.
   const [parejaActiva, setParejaActiva] = useState<ParejaPicaPica | null>(null);
+  // Cada pareja juega exactamente 1 de las 3 Manos de un Bloque de
+  // Pica-pica (ver CONTEXT.md/Pica-pica) — una vez que ya jugó la suya en
+  // este Bloque, no tiene que poder volver a elegirse hasta el próximo
+  // Bloque de Pica-pica. Se identifica cada pareja por jugadorEquipo1Id
+  // (único entre las 3). Se vacía apenas se sale de Pica-pica (ver el
+  // useEffect más abajo) o se corrige el Bloque a mano (ver corregirBloque).
+  const [parejasYaJugadas, setParejasYaJugadas] = useState<Set<string>>(new Set());
   const [, startTransition] = useTransition();
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -250,8 +257,14 @@ export function MarcadorEnVivo({
             // La Mano quedó del todo confirmada (no una recarga parcial de
             // taps que llegaron mientras este flush estaba en vuelo, ver
             // arriba) — recién ahí tiene sentido pedir de nuevo la pareja
-            // activa para la Mano siguiente (ver ticket #30).
+            // activa para la Mano siguiente (ver ticket #30), y recién ahí
+            // esa pareja pasa a estar jugada dentro de este Bloque (no
+            // puede volver a elegirse hasta el próximo Bloque de Pica-pica).
+            const parejaRecienJugada = parejaActivaRef.current;
             setParejaActiva(null);
+            if (parejaRecienJugada) {
+              setParejasYaJugadas((anterior) => new Set(anterior).add(parejaRecienJugada.jugadorEquipo1Id));
+            }
           }
           return;
         } catch {
@@ -292,8 +305,11 @@ export function MarcadorEnVivo({
         // corresponde a esa Mano) — recién ahora, con eso ya resuelto, se
         // limpia: si no había nada pendiente, flush() no la reseteó sola
         // (ver ticket #30), y de cualquier forma el Bloque está a punto de
-        // cambiar de tipo.
+        // cambiar de tipo. Se vacían también las parejas ya jugadas — una
+        // corrección manual arranca el Bloque de cero (ver ticket #21),
+        // incluso si el tipo corregido es el mismo que ya estaba vigente.
         setParejaActiva(null);
+        setParejasYaJugadas(new Set());
         return await corregirBloqueAction({ grupoId, partidaId, tipo });
       } finally {
         setCorrigiendoBloque(false);
@@ -301,6 +317,17 @@ export function MarcadorEnVivo({
     },
     [flush, grupoId, partidaId, cortarDebounce],
   );
+
+  // Un Bloque de Pica-pica nuevo siempre llega después de estar en Ronda
+  // (la Fase alternada nunca pasa de Pica-pica a Pica-pica directo, ver
+  // calcularBloqueSiguiente) — así que alcanza con vaciar acá cada vez que
+  // el tipo vigente NO es Pica-pica: para cuando vuelva a serlo, ya va a
+  // estar vacío. Ronda no usa este estado para nada.
+  useEffect(() => {
+    if (tipoDeBloqueActual !== "pica_pica") {
+      setParejasYaJugadas(new Set());
+    }
+  }, [tipoDeBloqueActual]);
 
   // Al montar: recién acá se lee sessionStorage (solo corre en el cliente,
   // después de hidratar — ver el comentario del useState de arriba). Si
@@ -413,18 +440,37 @@ export function MarcadorEnVivo({
       const pareja = parejasPicaPica.find(
         (p) => p.jugadorEquipo1Id === participanteId || p.jugadorEquipo2Id === participanteId,
       );
+      // Ya jugó su Mano en este Bloque (ver Marcador: el avatar queda
+      // deshabilitado) — no hay nada que elegir hasta el próximo Bloque de
+      // Pica-pica.
+      if (pareja && parejasYaJugadas.has(pareja.jugadorEquipo1Id)) {
+        return;
+      }
       setParejaActiva(pareja ?? null);
     },
-    [parejaActiva, parejasPicaPica],
+    [parejaActiva, parejasPicaPica, parejasYaJugadas],
   );
 
-  // null = los 6 avatares en su estilo neutro (Ronda, o Pica-pica sin
-  // pareja elegida todavía) — con una pareja elegida, esos 2 IDs son los
-  // que se quedan resaltados y el resto se oscurece (ver Marcador).
-  const idsDeParejaActiva = useMemo(
-    () => (esPicaPica && parejaActiva ? new Set([parejaActiva.jugadorEquipo1Id, parejaActiva.jugadorEquipo2Id]) : null),
+  // Todos los avatares se oscurecen salvo los 2 de la pareja activa —
+  // incluida la primera Mano del Bloque, antes de elegir nada (ver
+  // Marcador: ahí no hay ningún id en idsActivos todavía). Los de una
+  // pareja que ya jugó su Mano en este Bloque quedan además deshabilitados
+  // y tachados (idsYaJugados).
+  const idsActivos = useMemo(
+    () => (esPicaPica && parejaActiva ? new Set([parejaActiva.jugadorEquipo1Id, parejaActiva.jugadorEquipo2Id]) : new Set<string>()),
     [esPicaPica, parejaActiva],
   );
+  const idsYaJugados = useMemo(() => {
+    if (!esPicaPica) return new Set<string>();
+    const ids = new Set<string>();
+    for (const pareja of parejasPicaPica) {
+      if (parejasYaJugadas.has(pareja.jugadorEquipo1Id)) {
+        ids.add(pareja.jugadorEquipo1Id);
+        ids.add(pareja.jugadorEquipo2Id);
+      }
+    }
+    return ids;
+  }, [esPicaPica, parejasPicaPica, parejasYaJugadas]);
 
   const colorBadge = tipoDeBloqueActual === "pica_pica" ? "text-accent2" : "text-accent";
 
@@ -448,7 +494,8 @@ export function MarcadorEnVivo({
           equipo={1}
           deshabilitado={corrigiendoBloque || (esPicaPica && !parejaActiva)}
           tocable={esPicaPica}
-          idsDeParejaActiva={idsDeParejaActiva}
+          idsActivos={idsActivos}
+          idsYaJugados={idsYaJugados}
           onTocarAvatar={tocarAvatar}
           onMas={() => tocarMas(1)}
           onMenos={() => tocarMenos(1)}
@@ -459,7 +506,8 @@ export function MarcadorEnVivo({
           equipo={2}
           deshabilitado={corrigiendoBloque || (esPicaPica && !parejaActiva)}
           tocable={esPicaPica}
-          idsDeParejaActiva={idsDeParejaActiva}
+          idsActivos={idsActivos}
+          idsYaJugados={idsYaJugados}
           onTocarAvatar={tocarAvatar}
           onMas={() => tocarMas(2)}
           onMenos={() => tocarMenos(2)}
@@ -588,7 +636,8 @@ function Marcador({
   equipo,
   deshabilitado,
   tocable,
-  idsDeParejaActiva,
+  idsActivos,
+  idsYaJugados,
   onTocarAvatar,
   onMas,
   onMenos,
@@ -598,7 +647,8 @@ function Marcador({
   equipo: 1 | 2;
   deshabilitado?: boolean;
   tocable: boolean;
-  idsDeParejaActiva: Set<string> | null;
+  idsActivos: Set<string>;
+  idsYaJugados: Set<string>;
   onTocarAvatar: (participanteId: string) => void;
   onMas: () => void;
   onMenos: () => void;
@@ -617,22 +667,45 @@ function Marcador({
       </span>
       <div className="flex shrink-0 flex-wrap justify-center gap-1">
         {miembros.map((miembro) => {
-          // Pica-pica (ver ticket #30): con una pareja elegida, quien no es
-          // parte de ella se oscurece — idsDeParejaActiva es null en Ronda
-          // (nadie se oscurece, ver CONTEXT.md/Ronda) y también en
-          // Pica-pica mientras no se elige pareja todavía.
-          const oscurecido = idsDeParejaActiva !== null && !idsDeParejaActiva.has(miembro.participanteId);
-          const claseAvatar = `flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-opacity ${
-            equipo === 1 ? "border-accent bg-accent-soft text-accent" : "border-accent2 bg-accent2-soft text-accent2"
-          } ${oscurecido ? "opacity-30" : ""}`;
-
           if (!tocable) {
+            // Ronda: los 6 siempre resaltados en su estilo de siempre —
+            // nadie se oscurece, no hay pareja que elegir (ver
+            // CONTEXT.md/Ronda).
+            const claseRonda = `flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold ${
+              equipo === 1 ? "border-accent bg-accent-soft text-accent" : "border-accent2 bg-accent2-soft text-accent2"
+            }`;
             return (
-              <span key={miembro.participanteId} className={claseAvatar}>
+              <span key={miembro.participanteId} className={claseRonda}>
                 {inicialesDeParticipante(miembro)}
               </span>
             );
           }
+
+          const yaJugada = idsYaJugados.has(miembro.participanteId);
+          const activo = idsActivos.has(miembro.participanteId);
+
+          // Pica-pica (ver ticket #30, corrección de UI): por default (ni
+          // bien empieza el Bloque, antes de elegir nada) los 6 quedan
+          // oscurecidos por igual — recién la pareja elegida se resalta.
+          // La que ya jugó su Mano en este Bloque queda además
+          // deshabilitada y tachada, para que sea explícito que no se
+          // puede volver a elegir hasta el próximo Bloque de Pica-pica.
+          if (yaJugada) {
+            return (
+              <button
+                key={miembro.participanteId}
+                type="button"
+                disabled
+                className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-line bg-bg text-xs font-bold text-muted line-through opacity-60"
+              >
+                {inicialesDeParticipante(miembro)}
+              </button>
+            );
+          }
+
+          const claseAvatar = `flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-bold transition-opacity ${
+            equipo === 1 ? "border-accent bg-accent-soft text-accent" : "border-accent2 bg-accent2-soft text-accent2"
+          } ${activo ? "" : "opacity-30"}`;
 
           return (
             <button
