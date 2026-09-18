@@ -1,0 +1,1 @@
+ALTER TABLE "partida" ALTER COLUMN "anotadorParticipanteId" DROP NOT NULL;

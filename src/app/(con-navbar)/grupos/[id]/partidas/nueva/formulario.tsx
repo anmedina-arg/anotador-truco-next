@@ -58,9 +58,10 @@ export function FormularioNuevaPartida({
       <InputsOcultosDeParejas parejas={parejas} />
 
       <p className="text-sm text-muted">
-        Elegí 3 Participantes para Nosotros y 3 para Ellos. Vos, como quien carga la Partida,
-        quedás de Anotador — tenés que estar jugando en alguno de los dos equipos. El resto queda
-        afuera de esta Partida.
+        Elegí 3 Participantes para Nosotros y 3 para Ellos. Si quedás en alguno de los dos
+        Equipos, vas a ser el Anotador. Si no jugás, la Partida se crea igual — más adelante,
+        alguno de los que sí juegan se puede hacer cargo de anotar. El resto queda afuera de esta
+        Partida.
       </p>
 
       <ul className="flex flex-col gap-2.5">

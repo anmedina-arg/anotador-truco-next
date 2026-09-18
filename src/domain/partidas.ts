@@ -67,20 +67,42 @@ export function calcularBloqueSiguiente(input: {
   };
 }
 
-// El Anotador es quien creó la Partida (ver CONTEXT.md) — un solo lugar
-// para esta comparación, usado tanto para autorizar (anotarPunto,
-// cancelarPartida) como para decidir qué mostrar en la UI (acceso al
-// tanteador en vivo).
+// El Anotador es quien creó la Partida, si quedó jugando — si no, queda sin
+// asignar hasta que alguno de los 6 lo reclama en vivo (ver ticket #32/#33,
+// CONTEXT.md/Anotador). Un solo lugar para esta comparación, usado tanto
+// para autorizar (anotarPunto, cancelarPartida) como para decidir qué
+// mostrar en la UI (acceso al tanteador en vivo) — null nunca matchea, así
+// que una Partida sin Anotador asignado bloquea esas acciones para
+// cualquiera, sin ningún chequeo extra.
 export function esAnotadorDePartida(
-  partida: { anotadorParticipanteId: string },
+  partida: { anotadorParticipanteId: string | null },
   participanteId: string,
 ): boolean {
   return partida.anotadorParticipanteId === participanteId;
 }
 
+// Si un Participante dado es uno de los 6 que juegan una Partida (pertenece
+// a alguno de los dos Equipos) — distinto de esAnotadorDePartida, que
+// pregunta por el rol, no por participar. Lo usa el reclamo de Anotador en
+// vivo (ticket #33) para saber a quién ofrecerle el rol.
+export function esParticipanteDePartida(
+  partida: { equipo1: { participanteId: string }[]; equipo2: { participanteId: string }[] },
+  participanteId: string,
+): boolean {
+  return (
+    partida.equipo1.some((p) => p.participanteId === participanteId) ||
+    partida.equipo2.some((p) => p.participanteId === participanteId)
+  );
+}
+
 export async function crearPartida(input: {
   grupoId: string;
-  anotadorParticipanteId: string;
+  // Opcional (ticket #32): si quien crea la Partida no queda en ninguno de
+  // los dos Equipos, se omite y la Partida queda sin Anotador asignado
+  // hasta que alguno de los 6 lo reclama en vivo (ver ticket #33).
+  // crearRevancha y crearSiguienteEquipo lo siguen mandando siempre — ya
+  // resuelven ellos mismos quién queda de Anotador, sin cambios acá.
+  anotadorParticipanteId?: string;
   equipo1: string[];
   equipo2: string[];
   picaPicaParejas: ParejaPicaPica[];
@@ -98,7 +120,7 @@ export async function crearPartida(input: {
     throw new Error("Un Participante no puede estar en los dos Equipos");
   }
 
-  if (!participantes.includes(input.anotadorParticipanteId)) {
+  if (input.anotadorParticipanteId !== undefined && !participantes.includes(input.anotadorParticipanteId)) {
     throw new Error("El Anotador tiene que ser uno de los 6 Participantes de la Partida");
   }
 
@@ -174,7 +196,7 @@ export async function crearPartida(input: {
 
     const [partida] = await tx
       .insert(partidasTable)
-      .values({ grupoId: input.grupoId, anotadorParticipanteId: input.anotadorParticipanteId })
+      .values({ grupoId: input.grupoId, anotadorParticipanteId: input.anotadorParticipanteId ?? null })
       .returning();
 
     await Promise.all([
@@ -297,7 +319,9 @@ export async function crearRevancha(input: { partidaId: string; solicitanteId: s
 
   return crearPartida({
     grupoId: partida.grupoId,
-    anotadorParticipanteId: partida.anotadorParticipanteId,
+    // obtenerPartidaFinalizadaDelAnotador ya garantizó que solicitanteId es
+    // el Anotador de la Partida original (nunca null en este punto).
+    anotadorParticipanteId: input.solicitanteId,
     equipo1: partida.equipo1.map((p) => p.participanteId),
     equipo2: partida.equipo2.map((p) => p.participanteId),
     picaPicaParejas,
@@ -382,7 +406,7 @@ export async function listarPartidasEnCursoDeGrupo(grupoId: string) {
     string,
     {
       id: string;
-      anotadorParticipanteId: string;
+      anotadorParticipanteId: string | null;
       fechaInicio: Date;
       equipo1: ParticipanteBasico[];
       equipo2: ParticipanteBasico[];

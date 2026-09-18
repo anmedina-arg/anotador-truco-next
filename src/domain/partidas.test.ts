@@ -23,6 +23,7 @@ import {
   corregirBloqueManualmente,
   obtenerHistorialEntreJugadores,
   obtenerParejasYaJugadasEnBloqueActual,
+  esParticipanteDePartida,
 } from "./partidas";
 
 // p0..p6 quedan como miembros del Grupo; p7 registrado pero sin sumarse,
@@ -182,6 +183,19 @@ describe("crearPartida", () => {
         picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
       }),
     ).rejects.toThrow("El Anotador tiene que ser uno de los 6 Participantes de la Partida");
+  });
+
+  it("se crea sin Anotador asignado si no se lo indica (ticket #32: quien la crea no queda en ningún Equipo)", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+    });
+
+    expect(partida.anotadorParticipanteId).toBeNull();
+    expect(partida.estado).toBe("en_curso");
   });
 
   it("rechaza si alguno de los 6 no es miembro del Grupo", async () => {
@@ -345,6 +359,62 @@ describe("crearPartida", () => {
     ).rejects.toThrow(
       "Las parejas de Pica-pica tienen que emparejar 1 a 1 a los 3 Participantes de cada Equipo, sin repetidos",
     );
+  });
+});
+
+describe("Partida sin Anotador asignado (ticket #32)", () => {
+  async function crearPartidaSinAnotadorDePrueba() {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    return crearPartida({
+      grupoId,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+    });
+  }
+
+  it("rechaza cargar un punto mientras no hay Anotador asignado", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+
+    await expect(
+      anotarPunto({ partidaId: partida.id, solicitanteId: p0, equipo: 1, delta: -1 }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede cargar puntos");
+  });
+
+  it("rechaza corregir el Bloque mientras no hay Anotador asignado", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+
+    await expect(
+      corregirBloqueManualmente({ partidaId: partida.id, solicitanteId: p0, tipo: "pica_pica" }),
+    ).rejects.toThrow("Solo el Anotador de la Partida puede corregir el Bloque");
+  });
+
+  it("rechaza cancelar la Partida mientras no hay Anotador asignado", async () => {
+    const [p0] = participanteIds;
+    const partida = await crearPartidaSinAnotadorDePrueba();
+
+    await expect(cancelarPartida({ partidaId: partida.id, solicitanteId: p0 })).rejects.toThrow(
+      "Solo el Anotador de la Partida puede cancelarla",
+    );
+  });
+});
+
+describe("esParticipanteDePartida", () => {
+  it("es true para un Participante de cualquiera de los dos Equipos", () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = { equipo1: [{ participanteId: p0 }, { participanteId: p1 }, { participanteId: p2 }], equipo2: [{ participanteId: p3 }, { participanteId: p4 }, { participanteId: p5 }] };
+
+    expect(esParticipanteDePartida(partida, p0)).toBe(true);
+    expect(esParticipanteDePartida(partida, p4)).toBe(true);
+  });
+
+  it("es false para alguien que no juega esa Partida", () => {
+    const [p0, p1, p2, p3, p4, p5, p6] = participanteIds;
+    const partida = { equipo1: [{ participanteId: p0 }, { participanteId: p1 }, { participanteId: p2 }], equipo2: [{ participanteId: p3 }, { participanteId: p4 }, { participanteId: p5 }] };
+
+    expect(esParticipanteDePartida(partida, p6)).toBe(false);
   });
 });
 

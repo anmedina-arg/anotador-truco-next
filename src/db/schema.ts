@@ -154,9 +154,14 @@ export const partidasTable = pgTable(
       .references(() => gruposTable.id, { onDelete: "cascade" }),
     // "restrict": igual criterio que grupo.adminParticipanteId — no perder el
     // registro de la Partida solo porque el Anotador se borró de la app.
-    anotadorParticipanteId: text("anotadorParticipanteId")
-      .notNull()
-      .references(() => usersTable.id, { onDelete: "restrict" }),
+    // Nullable (ticket #32): si quien crea la Partida no queda en ninguno de
+    // los dos Equipos, queda sin Anotador hasta que alguno de los 6 que
+    // juegan lo reclama en vivo (ver ticket #33) — mientras tanto, nadie
+    // puede cargar puntos, corregir el Bloque ni cancelar (esAnotadorDePartida
+    // nunca matchea contra null).
+    anotadorParticipanteId: text("anotadorParticipanteId").references(() => usersTable.id, {
+      onDelete: "restrict",
+    }),
     estado: estadoPartidaEnum("estado").notNull().default("en_curso"),
     equipo1Puntos: integer("equipo1Puntos").notNull().default(0),
     equipo2Puntos: integer("equipo2Puntos").notNull().default(0),

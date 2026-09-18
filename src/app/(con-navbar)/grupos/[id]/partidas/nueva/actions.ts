@@ -36,11 +36,17 @@ export async function crearPartidaAction(
     jugadorEquipo2Id: picaPicaJugador2[i],
   }));
 
+  // Quien crea la Partida queda de Anotador solo si se anotó a sí mismo en
+  // alguno de los dos Equipos (ver ticket #32) — si no, la Partida se crea
+  // igual, sin Anotador asignado, hasta que alguno de los 6 que juegan lo
+  // reclama en vivo (ver ticket #33).
+  const creadorJuega = equipo1.includes(session.user.id) || equipo2.includes(session.user.id);
+
   let partida: Awaited<ReturnType<typeof crearPartida>>;
   try {
     partida = await crearPartida({
       grupoId,
-      anotadorParticipanteId: session.user.id,
+      anotadorParticipanteId: creadorJuega ? session.user.id : undefined,
       equipo1,
       equipo2,
       picaPicaParejas,
@@ -50,6 +56,16 @@ export async function crearPartidaAction(
       return { message: error.message };
     }
     throw error;
+  }
+
+  if (!creadorJuega) {
+    // Sin Anotador asignado, la pantalla de la Partida todavía le da 404 a
+    // todo el mundo (ver ticket #33, no implementado acá) — mandar para
+    // ahí sería un callejón sin salida. La página del Grupo ya sabe mostrar
+    // una Partida en curso sin Anotador como fila no clickeable (ver
+    // esAnotadorDePartida en grupos/[id]/page.tsx), así que ahí sí hay algo
+    // útil para ver mientras tanto.
+    redirect(`/grupos/${grupoId}`);
   }
 
   // Directo al marcador en vez de a la página del Grupo — evita el paso
