@@ -56,14 +56,14 @@ export default async function Home() {
               <div className="flex flex-col divide-y divide-line">
                 <a
                   href={`/grupos/${grupo.id}`}
-                  className="p-4 text-sm font-bold text-ink no-underline hover:text-accent"
+                  className="block w-full p-4 text-sm font-bold text-ink no-underline hover:text-accent"
                 >
                   {grupo.nombre}
                 </a>
                 {grupoSecundario && (
                   <a
                     href={`/grupos/${grupoSecundario.id}`}
-                    className="p-4 text-sm font-bold text-ink no-underline hover:text-accent"
+                    className="block w-full p-4 text-sm font-bold text-ink no-underline hover:text-accent"
                   >
                     {grupoSecundario.nombre}
                   </a>
