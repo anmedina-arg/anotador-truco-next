@@ -47,12 +47,25 @@ export const FosforosTally = ({ puntos, colorClase }: { puntos: number; colorCla
   const gruposConMarca = Math.ceil(puntos / PUNTOS_POR_GRUPO);
 
   if (gruposConMarca === 0) {
-    return null;
+    // No es null: FosforosTally pasó a ser flex-item directo de quien lo
+    // usa (ver abajo), no un hijo dentro de un wrapper flex-1 — sin este
+    // spacer, con 0 puntos el resto de la tarjeta perdería el espacio
+    // flexible que antes reservaba ese wrapper aunque no hubiera nada que
+    // dibujar, y el contenido de abajo (los botones de +/-) subiría.
+    return <div className="min-h-0 w-full flex-1" />;
   }
 
   return (
     <div
-      className="grid h-full w-full gap-2"
+      // min-h-0 flex-1 en vez de h-full: h-full (porcentaje) encadenado a
+      // través de varios niveles de flexbox no se resuelve en iOS Safari
+      // (bug de WebKit ya reportado: "100% height doesn't work within a
+      // flex item in a flex-item child", bugs.webkit.org #137730) — ahí el
+      // cuadrado de fósforos terminaba con alto 0, invisible, aunque en
+      // Chrome/Android se veía bien. Como flex-item directo (participa del
+      // flex-grow del contenedor que lo usa, en vez de leer un porcentaje
+      // de su altura) el alto se resuelve igual en los dos.
+      className="grid min-h-0 w-full flex-1 gap-2"
       style={{
         gridTemplateRows: `repeat(${MAX_GRUPOS}, minmax(0, 1fr))`,
         gridTemplateColumns: "minmax(0, 1fr)",

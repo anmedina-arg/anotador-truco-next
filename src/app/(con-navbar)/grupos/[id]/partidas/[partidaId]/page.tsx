@@ -229,9 +229,7 @@ function MarcadorFinal({
       <p className={`my-1 shrink-0 font-display text-5xl font-extrabold ${esBuenas ? "text-accent" : "text-ink"}`}>
         {puntos}
       </p>
-      <div className="flex min-h-0 flex-1 flex-col items-center">
-        <FosforosTally puntos={puntosDeLaFase} colorClase={esBuenas ? "bg-accent2" : "bg-ink"} />
-      </div>
+      <FosforosTally puntos={puntosDeLaFase} colorClase={esBuenas ? "bg-accent2" : "bg-ink"} />
     </div>
   );
 }
