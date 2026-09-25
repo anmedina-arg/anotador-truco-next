@@ -59,6 +59,13 @@ export default async function PartidaDetallePage({
   // en cada render server-side — un cambio del admin aplica a la próxima
   // vez que se carga esta pantalla, sin polling (ver ADR 0005).
   const grupo = partida.estado === "en_curso" ? await obtenerGrupoPorId(grupoId) : null;
+  // El admin del Grupo puede cancelar cualquier Partida en curso, sea o no
+  // su Anotador (ticket #35) — para destrabar una sin Anotador asignado
+  // que nadie reclamó (ver #32), o con un Anotador que dejó de jugar. Solo
+  // decide el botón de Cancelar; ninguna otra acción del Anotador gana
+  // esta alternativa. `grupo` ya trae adminParticipanteId, no hace falta
+  // ninguna consulta nueva.
+  const esAdminDelGrupo = grupo?.adminParticipanteId === session.user.id;
   // Solo hace falta para el marcador en vivo, y ahí solo cuando el Bloque
   // vigente es Pica-pica — pero pedirlas siempre es más simple que agregar
   // un caso especial, y son 3 filas nomás (ver ticket #30).
@@ -167,10 +174,15 @@ export default async function PartidaDetallePage({
         </div>
       )}
 
-      {partida.estado === "en_curso" && esAnotador && (
+      {partida.estado === "en_curso" && (esAnotador || esAdminDelGrupo) && (
         <form action={cancelarPartidaAction} className="shrink-0">
           <input type="hidden" name="grupoId" value={grupoId} />
           <input type="hidden" name="partidaId" value={partida.id} />
+          {!esAnotador && (
+            <p className="mb-2 rounded-2xl border-2 border-line bg-surface p-3.5 text-center text-sm font-bold text-muted">
+              Estás cancelando esta Partida como admin del Grupo.
+            </p>
+          )}
           <button
             type="submit"
             className="w-full rounded-2xl border-2 border-danger-border bg-danger-soft p-3 text-sm font-display font-bold text-danger"

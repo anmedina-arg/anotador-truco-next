@@ -231,6 +231,27 @@ export async function esMiembroDeGrupo(grupoId: string, participanteId: string):
   return !!fila;
 }
 
+// Si un Participante es el admin de un Grupo (ver CONTEXT.md/Grupo, campo
+// adminParticipanteId) — boolean reutilizable, a diferencia de
+// requerirAdmin (más arriba, privada de este módulo) que tira si no lo es
+// y devuelve el Grupo: esa la siguen usando las acciones de admin propias
+// de este módulo (regenerarCodigoInvitacion, sacarMiembro, etc.) sin
+// tocarla; esta la usa cancelarPartida (domain/partidas.ts, ticket #35)
+// para sumar al admin como una segunda vía válida, junto al Anotador.
+// Select angosto (mismo criterio que esMiembroDeGrupo, más arriba) en vez
+// de traer la fila completa del Grupo por un solo campo.
+export async function esAdminDeGrupo(grupoId: string, participanteId: string): Promise<boolean> {
+  const db = getDb();
+
+  const [fila] = await db
+    .select({ id: gruposTable.id })
+    .from(gruposTable)
+    .where(and(eq(gruposTable.id, grupoId), eq(gruposTable.adminParticipanteId, participanteId)))
+    .limit(1);
+
+  return !!fila;
+}
+
 // Desempate determinístico compartido por los distintos órdenes de
 // Participantes de abajo — sin él, Postgres no garantiza nada entre filas
 // empatadas en el campo que se esté ordenando.

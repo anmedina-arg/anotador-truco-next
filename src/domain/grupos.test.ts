@@ -8,6 +8,7 @@ import {
   listarGruposDeParticipante,
   listarMiembrosDeGrupo,
   esMiembroDeGrupo,
+  esAdminDeGrupo,
   obtenerGrupoMasActivoDeParticipante,
   obtenerGrupoPorId,
   unirseAGrupo,
@@ -263,6 +264,33 @@ describe("esMiembroDeGrupo", () => {
     await unirseAGrupo({ codigoInvitacion: grupo.codigoInvitacion, participanteId: ajenoId });
 
     expect(await esMiembroDeGrupo(grupo.id, ajenoId)).toBe(true);
+  });
+});
+
+describe("esAdminDeGrupo", () => {
+  it("es true para el admin", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+
+    expect(await esAdminDeGrupo(grupo.id, adminId)).toBe(true);
+  });
+
+  it("es false para un miembro que no es admin", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+    await unirseAGrupo({ codigoInvitacion: grupo.codigoInvitacion, participanteId: ajenoId });
+
+    expect(await esAdminDeGrupo(grupo.id, ajenoId)).toBe(false);
+  });
+
+  it("es false para el admin de otro Grupo", async () => {
+    const grupo = await crearGrupo({ nombre: "Los viernes", adminParticipanteId: adminId });
+    const db = getDb();
+    const otroGrupo = await crearGrupo({ nombre: "Otro Grupo", adminParticipanteId: ajenoId });
+
+    try {
+      expect(await esAdminDeGrupo(grupo.id, ajenoId)).toBe(false);
+    } finally {
+      await db.delete(gruposTable).where(eq(gruposTable.id, otroGrupo.id));
+    }
   });
 });
 

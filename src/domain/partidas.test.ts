@@ -384,12 +384,15 @@ describe("Partida sin Anotador asignado (ticket #32)", () => {
     ).rejects.toThrow("Solo el Anotador de la Partida puede corregir el Bloque");
   });
 
-  it("rechaza cancelar la Partida mientras no hay Anotador asignado", async () => {
-    const [p0] = participanteIds;
+  it("rechaza cancelar la Partida mientras no hay Anotador asignado, si tampoco sos el admin del Grupo", async () => {
+    // p0 es el admin del Grupo (ver beforeEach) — desde el ticket #35 el
+    // admin SÍ puede cancelar sin Anotador asignado (ver ese describe más
+    // abajo); p1 no es ni Anotador ni admin, el caso que este test cubre.
+    const [, p1] = participanteIds;
     const partida = await crearPartidaSinAnotadorDePrueba();
 
-    await expect(cancelarPartida({ partidaId: partida.id, solicitanteId: p0 })).rejects.toThrow(
-      "Solo el Anotador de la Partida puede cancelarla",
+    await expect(cancelarPartida({ partidaId: partida.id, solicitanteId: p1 })).rejects.toThrow(
+      "Solo el Anotador de la Partida o el admin del Grupo pueden cancelarla",
     );
   });
 });
@@ -1817,8 +1820,10 @@ describe("cancelarPartida", () => {
     }
   });
 
-  it("rechaza si quien cancela no es el Anotador de la Partida", async () => {
+  it("rechaza si quien cancela no es el Anotador de la Partida ni el admin del Grupo", async () => {
     const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    // p0 es el admin del Grupo (ver beforeEach) — p1 no es ni Anotador ni
+    // admin, el verdadero caso a rechazar (ticket #35).
     const partida = await crearPartida({
       grupoId,
       anotadorParticipanteId: p0,
@@ -1829,7 +1834,7 @@ describe("cancelarPartida", () => {
 
     await expect(
       cancelarPartida({ partidaId: partida.id, solicitanteId: p1 }),
-    ).rejects.toThrow("Solo el Anotador de la Partida puede cancelarla");
+    ).rejects.toThrow("Solo el Anotador de la Partida o el admin del Grupo pueden cancelarla");
   });
 
   it("rechaza si la Partida no está en_curso", async () => {
@@ -1846,6 +1851,75 @@ describe("cancelarPartida", () => {
     await expect(
       cancelarPartida({ partidaId: partida.id, solicitanteId: p0 }),
     ).rejects.toThrow("La Partida no está en curso");
+  });
+});
+
+describe("cancelarPartida — admin del Grupo (ticket #35)", () => {
+  it("el admin del Grupo puede cancelar una Partida en curso sin ser su Anotador", async () => {
+    // p0 es el admin del Grupo (ver beforeEach); p1 es el Anotador de esta
+    // Partida en particular, no p0.
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p1,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+    });
+
+    const cancelada = await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    expect(cancelada.estado).toBe("cancelada");
+  });
+
+  it("el admin puede cancelar una Partida sin Anotador asignado (ver ticket #32)", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+    });
+
+    const cancelada = await cancelarPartida({ partidaId: partida.id, solicitanteId: p0 });
+
+    expect(cancelada.estado).toBe("cancelada");
+  });
+
+  it("el Anotador que no es admin del Grupo puede seguir cancelando, sin cambios", async () => {
+    const [p0, p1, p2, p3, p4, p5] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p1,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+    });
+
+    const cancelada = await cancelarPartida({ partidaId: partida.id, solicitanteId: p1 });
+
+    expect(cancelada.estado).toBe("cancelada");
+  });
+
+  it("rechaza si quien cancela es admin de otro Grupo, ajeno a esta Partida", async () => {
+    const [p0, p1, p2, p3, p4, p5, , p7] = participanteIds;
+    const partida = await crearPartida({
+      grupoId,
+      anotadorParticipanteId: p1,
+      equipo1: [p0, p1, p2],
+      equipo2: [p3, p4, p5],
+      picaPicaParejas: parejasPorPosicion([p0, p1, p2], [p3, p4, p5]),
+    });
+
+    const db = getDb();
+    const otroGrupo = await crearGrupo({ nombre: "Otro Grupo", adminParticipanteId: p7 });
+    try {
+      await expect(
+        cancelarPartida({ partidaId: partida.id, solicitanteId: p7 }),
+      ).rejects.toThrow("Solo el Anotador de la Partida o el admin del Grupo pueden cancelarla");
+    } finally {
+      await db.delete(gruposTable).where(eq(gruposTable.id, otroGrupo.id));
+    }
   });
 });
 

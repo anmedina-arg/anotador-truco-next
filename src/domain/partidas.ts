@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import type { ParticipanteBasico } from "./participantes";
-import { nivelDeVictoria, calcularEstadisticasRanking } from "./grupos";
+import { nivelDeVictoria, calcularEstadisticasRanking, esAdminDeGrupo } from "./grupos";
 import {
   usersTable,
   gruposTable,
@@ -881,8 +881,18 @@ export async function cancelarPartida(input: { partidaId: string; solicitanteId:
     if (partida.estado !== "en_curso") {
       throw new Error("La Partida no está en curso");
     }
-    if (!esAnotadorDePartida(partida, input.solicitanteId)) {
-      throw new Error("Solo el Anotador de la Partida puede cancelarla");
+    // El Anotador de la Partida, o el admin del Grupo al que pertenece
+    // (ticket #35, CONTEXT.md/Anotador y Grupo) — el admin es la única
+    // vía para destrabar una Partida sin Anotador asignado que nadie
+    // reclamó (ver ticket #32), o con un Anotador que dejó de jugar.
+    // Ninguna otra acción de dominio (anotarPunto, cargarResultadoDeMano,
+    // corregirBloqueManualmente, reclamarAnotador, crearRevancha,
+    // crearSiguienteEquipo) suma al admin como alternativa — solo esta.
+    const puedeCancelar =
+      esAnotadorDePartida(partida, input.solicitanteId) ||
+      (await esAdminDeGrupo(partida.grupoId, input.solicitanteId));
+    if (!puedeCancelar) {
+      throw new Error("Solo el Anotador de la Partida o el admin del Grupo pueden cancelarla");
     }
 
     const [cancelada] = await tx
