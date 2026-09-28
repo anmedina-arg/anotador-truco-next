@@ -1,6 +1,15 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Mismo alias que tsconfig.json/next.config — hasta el ticket #37 ningún
+  // test tocaba un archivo que lo usara (los de dominio solo importan
+  // rutas relativas), así que nunca hizo falta acá.
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
+  },
   test: {
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],

@@ -7,63 +7,122 @@ export type ParejaPicaPica = { jugadorEquipo1Id: string; jugadorEquipo2Id: strin
 
 const PAREJAS_REQUERIDAS = 3;
 
-// Armado de las 3 parejas fijas de Pica-pica (ver CONTEXT.md/Pica-pica, ADR
-// 0006) por toque, estilo memotest: tocar a alguien sin pareja lo deja
-// "seleccionado"; tocar después a alguien del otro Equipo confirma la
-// pareja; tocar una pareja ya armada la deshace. Se resetea entero cada vez
-// que cambia la composición de los Equipos — un Participante remapeado a
-// otro Equipo (o sacado/agregado) podría dejar una pareja ya armada
-// apuntando a alguien que ya no corresponde.
-export function usePicaPicaParejas(equipo1: ParticipanteBasico[], equipo2: ParticipanteBasico[]) {
-  const [parejas, setParejas] = useState<ParejaPicaPica[]>([]);
-  const [seleccionado, setSeleccionado] = useState<string | null>(null);
+// Dadas las parejas ya armadas, quiénes quedan sueltos (ticket #37): una
+// vez que hay exactamente 2 parejas, a cada Equipo le queda 1 solo
+// Participante sin emparejar — esa combinación es la única posible, no una
+// suposición, así que no hace falta pedirle al Anotador que la confirme
+// con un toque más. Pura y sin React a propósito: se prueba con Vitest
+// sin necesitar la base de datos (ver armado-parejas-pica-pica.test.ts).
+export function parejaSueltaPorDescarte(
+  equipo1Ids: string[],
+  equipo2Ids: string[],
+  parejas: ParejaPicaPica[],
+): ParejaPicaPica | null {
+  if (parejas.length !== PAREJAS_REQUERIDAS - 1) {
+    return null;
+  }
 
-  const idsEquipo1 = new Set(equipo1.map((m) => m.participanteId));
+  const emparejadosEquipo1 = new Set(parejas.map((p) => p.jugadorEquipo1Id));
+  const emparejadosEquipo2 = new Set(parejas.map((p) => p.jugadorEquipo2Id));
+
+  const sueltoEquipo1 = equipo1Ids.find((id) => !emparejadosEquipo1.has(id));
+  const sueltoEquipo2 = equipo2Ids.find((id) => !emparejadosEquipo2.has(id));
+
+  if (!sueltoEquipo1 || !sueltoEquipo2) {
+    return null;
+  }
+
+  return { jugadorEquipo1Id: sueltoEquipo1, jugadorEquipo2Id: sueltoEquipo2 };
+}
+
+export type EstadoArmadoDeParejas = { parejas: ParejaPicaPica[]; seleccionado: string | null };
+
+// Toda la decisión de un toque sobre el armado de parejas (ticket #37) —
+// estilo memotest: tocar a alguien sin pareja lo deja "seleccionado";
+// tocar después a alguien del otro Equipo confirma la pareja (y, si esa
+// es la segunda, completa la tercera sola con los 2 que quedan sueltos —
+// ver parejaSueltaPorDescarte); tocar una pareja ya armada la deshace,
+// cualquiera de las 3, sin excepción, sin ningún recálculo automático (el
+// auto-completado corre solo en la rama de armar, nunca en la de
+// deshacer, más abajo). Pura y sin React a propósito, igual que
+// parejaSueltaPorDescarte: permite probar la secuencia completa (armar,
+// autocompletar, deshacer) con Vitest simple, sin renderizar nada — ver
+// armado-parejas-pica-pica.test.ts.
+export function siguienteEstadoAlTocar(
+  estado: EstadoArmadoDeParejas,
+  participanteId: string,
+  equipo1Ids: string[],
+  equipo2Ids: string[],
+): EstadoArmadoDeParejas {
+  const { parejas, seleccionado } = estado;
+
+  const indiceExistente = parejas.findIndex(
+    (p) => p.jugadorEquipo1Id === participanteId || p.jugadorEquipo2Id === participanteId,
+  );
+  if (indiceExistente !== -1) {
+    return { parejas: parejas.filter((_, i) => i !== indiceExistente), seleccionado };
+  }
+
+  if (!seleccionado) {
+    return { parejas, seleccionado: participanteId };
+  }
+  if (seleccionado === participanteId) {
+    return { parejas, seleccionado: null };
+  }
+
+  const idsEquipo1 = new Set(equipo1Ids);
+  const tocadoEsEquipo1 = idsEquipo1.has(participanteId);
+  const seleccionadoEsEquipo1 = idsEquipo1.has(seleccionado);
+  if (tocadoEsEquipo1 === seleccionadoEsEquipo1) {
+    // Mismo Equipo que el ya seleccionado — no forma pareja válida (tiene
+    // que ser 1 de cada lado), así que solo cambia la selección.
+    return { parejas, seleccionado: participanteId };
+  }
+
+  const jugadorEquipo1Id = tocadoEsEquipo1 ? participanteId : seleccionado;
+  const jugadorEquipo2Id = tocadoEsEquipo1 ? seleccionado : participanteId;
+  const actualizadas = [...parejas, { jugadorEquipo1Id, jugadorEquipo2Id }];
+  const restante = parejaSueltaPorDescarte(equipo1Ids, equipo2Ids, actualizadas);
+
+  return {
+    parejas: restante ? [...actualizadas, restante] : actualizadas,
+    seleccionado: null,
+  };
+}
+
+export function usePicaPicaParejas(equipo1: ParticipanteBasico[], equipo2: ParticipanteBasico[]) {
+  const [estado, setEstado] = useState<EstadoArmadoDeParejas>({ parejas: [], seleccionado: null });
+
   const claveEquipos =
     equipo1.map((m) => m.participanteId).sort().join() +
     "|" +
     equipo2.map((m) => m.participanteId).sort().join();
 
+  // Se resetea entero cada vez que cambia la composición de los Equipos —
+  // un Participante remapeado a otro Equipo (o sacado/agregado) podría
+  // dejar una pareja ya armada apuntando a alguien que ya no corresponde.
   useEffect(() => {
-    setParejas([]);
-    setSeleccionado(null);
+    setEstado({ parejas: [], seleccionado: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claveEquipos]);
 
   function tocar(participanteId: string) {
-    const indiceExistente = parejas.findIndex(
-      (p) => p.jugadorEquipo1Id === participanteId || p.jugadorEquipo2Id === participanteId,
+    setEstado((anterior) =>
+      siguienteEstadoAlTocar(
+        anterior,
+        participanteId,
+        equipo1.map((m) => m.participanteId),
+        equipo2.map((m) => m.participanteId),
+      ),
     );
-    if (indiceExistente !== -1) {
-      setParejas((anterior) => anterior.filter((_, i) => i !== indiceExistente));
-      return;
-    }
-
-    if (!seleccionado) {
-      setSeleccionado(participanteId);
-      return;
-    }
-    if (seleccionado === participanteId) {
-      setSeleccionado(null);
-      return;
-    }
-
-    const tocadoEsEquipo1 = idsEquipo1.has(participanteId);
-    const seleccionadoEsEquipo1 = idsEquipo1.has(seleccionado);
-    if (tocadoEsEquipo1 === seleccionadoEsEquipo1) {
-      // Mismo Equipo que el ya seleccionado — no forma pareja válida (tiene
-      // que ser 1 de cada lado), así que solo cambia la selección.
-      setSeleccionado(participanteId);
-      return;
-    }
-
-    const jugadorEquipo1Id = tocadoEsEquipo1 ? participanteId : seleccionado;
-    const jugadorEquipo2Id = tocadoEsEquipo1 ? seleccionado : participanteId;
-    setParejas((anterior) => [...anterior, { jugadorEquipo1Id, jugadorEquipo2Id }]);
-    setSeleccionado(null);
   }
 
-  return { parejas, seleccionado, tocar, completas: parejas.length === PAREJAS_REQUERIDAS };
+  return {
+    parejas: estado.parejas,
+    seleccionado: estado.seleccionado,
+    tocar,
+    completas: estado.parejas.length === PAREJAS_REQUERIDAS,
+  };
 }
 
 // El armado se muestra en un modal (en vez de inline en la lista) para no
